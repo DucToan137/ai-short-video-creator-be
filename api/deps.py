@@ -2,7 +2,6 @@ from fastapi.security import HTTPBearer,HTTPAuthorizationCredentials
 from fastapi import Depends, HTTPException, status
 from services import get_user_by_username
 from models import User
-from schemas import TokenData
 from core import verify_token
 from jose import JWTError
 security = HTTPBearer()

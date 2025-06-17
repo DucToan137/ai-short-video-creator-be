@@ -1,8 +1,8 @@
-from services import check_and_refresh_google_credentials
+from services import check_and_refresh_google_credentials,download_video_media_from_cloud
 from models import User
-from schemas import VideoUpLoadRequest,VideoStatsResponse,GoogleVideoStatsResponse
+from schemas import VideoUpLoadRequest,GoogleVideoStatsResponse
 from googleapiclient.discovery import build,Resource
-from googleapiclient.http import MediaFileUpload
+from googleapiclient.http import MediaIoBaseUpload
 from fastapi import HTTPException, status
 async def get_youtube_service(user:User) -> Resource:
     credentials = await check_and_refresh_google_credentials(user)
@@ -25,9 +25,9 @@ async def upload_video_to_youtube(user:User,upload_request:VideoUpLoadRequest)->
                 'selfDeclaredMadeForKids': False
             }
         }
-        video_path='./media/test.mp4'  # Replace with the actual path to the video file
-        media = MediaFileUpload(
-            video_path,
+        video_stream = await download_video_media_from_cloud(upload_request.media_id)   # Replace with the actual path to the video file
+        media = MediaIoBaseUpload(
+            video_stream,
             chunksize=1024 * 1024,  # 1 MB chunks
             resumable=True,
             mimetype='video/mp4'

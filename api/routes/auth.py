@@ -1,4 +1,4 @@
-from fastapi import APIRouter,HTTPException,Form,Response,Request,Depends
+from fastapi import APIRouter,HTTPException,Form,Response,Request,Depends,status
 from fastapi.responses import RedirectResponse
 from models import User
 from schemas import UserResponse, UserCreate,UserLogin,Token
@@ -22,17 +22,16 @@ async def register_user(user: UserCreate = Form(...)):
         )
     except Exception as e:
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred while creating the user: {str(e)}"
         )
 @router.post("/login",response_model=Token)
 async def login_user(response:Response,user_client: UserLogin = Form(...)):
     try:
         user = await authenticate_user(user_client)
-        print(user)
         if not user:
             raise HTTPException(
-                status_code=401,
+                status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid username or password",
                 headers={"WWW-Authenticate": "Bearer"},
                 
@@ -54,7 +53,7 @@ async def login_user(response:Response,user_client: UserLogin = Form(...)):
           )  
     except Exception as e:
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred while creating the user: {str(e)}"
         )
 @router.get("/google/auth")
@@ -64,7 +63,7 @@ async def google_auth():
         return {"auth_url": auth_url}
     except Exception as e:
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred while getting Google OAuth URL: {str(e)}"
         )
 @router.get("/google/callback")
@@ -87,7 +86,7 @@ async def google_callback(code: str,response:Response):
         )
     except Exception as e:
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred while creating the user: {str(e)}"
         )
 @router.get("/facebook/auth")
@@ -97,7 +96,7 @@ async def facebook_auth():
         return {"auth_url": auth_url}
     except Exception as e:
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred while getting Facebook OAuth URL: {str(e)}"
         )
 @router.get("/facebook/callback")
@@ -120,7 +119,7 @@ async def facebook_callback(code:str,response:Response):
         )
     except Exception as e:
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred while creating the user: {str(e)}"
         )
 @router.post("/logout")
@@ -135,7 +134,7 @@ async def logout_user(response: Response):
         return {"message": "Successfully logged out"}
     except Exception as e:
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred while logging out: {str(e)}"
         )
     
@@ -145,7 +144,7 @@ async def refresh_token(request:Request):
         refresh_token = request.cookies.get("refresh_token")
         if not refresh_token:
             raise HTTPException(
-                status_code=401,
+                status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Refresh token not found"
             )
         payload = verify_token(refresh_token, token_type="refresh")
@@ -153,7 +152,7 @@ async def refresh_token(request:Request):
         username = payload.get("sub")
         if not user_id or not username:
             raise HTTPException(
-                status_code=401,
+                status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid refresh token"
             )
         new_access_token = create_access_token(data={"sub": username, "id": user_id})
@@ -163,7 +162,7 @@ async def refresh_token(request:Request):
             expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60)
     except Exception as e:
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred while logging out: {str(e)}"
         )
 @router.get("/me", response_model=UserResponse)
