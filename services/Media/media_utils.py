@@ -9,6 +9,8 @@ from typing import Optional, Dict
 from config import media_collection
 from models.media import MediaModel, MediaType
 from bson import ObjectId
+from io import BytesIO
+import httpx
 
 media_colt = media_collection()
 
@@ -242,12 +244,19 @@ def upload_video_to_cloud(video_path, title=None, description=None):
         
     return result
 
-async def get_media_by_id(media_id: str) -> Optional[MediaModel]:
+
+async def download_video_media_from_cloud(media_id:str) ->BytesIO|None:
     try:
-        media =await media_colt.find_one({"_id": ObjectId(media_id)})
-        if media:
-            return MediaModel(**media)
-        return None
+        video = BytesIO()
+        media = await get_media_by_id(media_id)
+        if not media or not media.url:
+            return None
+        async with httpx.AsyncClient() as client:
+            async with client("GET", media.url) as response:
+                response.raise_for_status()
+                async for chunk in response.aiter_bytes(8192):
+                    video.write(chunk)
+        video.seek(0)
+        return video
     except Exception as e:
-        print(f"Error fetching media by ID {media_id}: {e}")
         return None
