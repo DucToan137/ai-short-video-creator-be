@@ -8,15 +8,25 @@ import tempfile
 from config import TEMP_DIR
 from services import generate_text, generate_speech, generate_image, transcribe_audio, convert_to_srt, create_video, add_subtitles, upload_media
 from typing import Literal
+import json 
+import re
 
 router = APIRouter(prefix="/media", tags=["Media Generation"])
 
 @router.post("/generate-text")
-async def generate_text_endpoint(model: Literal["deepseek", "gemini"] = Form(...), prompt: str = Form(...), max_length: int = Form(100)):
+async def generate_text_endpoint(model: Literal["deepseek", "gemini"] = Form(...), prompt: str = Form(...)):
     """Generate text from a prompt"""
-    try:
-        generated_text = generate_text(model, prompt, max_length)
-        return {"text": generated_text}
+    try: 
+        generated_text = generate_text(model, prompt)
+
+        # Dùng regex để trích nội dung JSON từ giữa các dấu ```
+        json_text = re.search(r"```(?:json)?\s*(\{.*?\})\s*```",  generated_text, re.DOTALL)
+        if json_text:
+            parsed_data = json.loads(json_text.group(1))
+        else:
+            raise ValueError("Không tìm thấy JSON hợp lệ trong response.")   
+             
+        return {"text": parsed_data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Text generation error: {str(e)}")
 
