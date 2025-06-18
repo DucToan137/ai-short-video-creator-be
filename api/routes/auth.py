@@ -13,7 +13,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = app_config.ACCESS_TOKEN_EXPIRE_MINUTES
 REFRESH_TOKEN_EXPIRE_DAYS = app_config.REFRESH_TOKEN_EXPIRE_DAYS
 FRONTEND_URL = app_config.FRONTEND_URL
 @router.post("/register",response_model=UserResponse)
-async def register_user(user: UserCreate = Form(...)):
+async def register_user(user: UserCreate):
     try:
         new_user = await create_user(user)
         new_user_response = new_user.model_dump(exclude={"password"})
@@ -26,7 +26,7 @@ async def register_user(user: UserCreate = Form(...)):
             detail=f"An error occurred while creating the user: {str(e)}"
         )
 @router.post("/login",response_model=Token)
-async def login_user(response:Response,user_client: UserLogin = Form(...)):
+async def login_user(response:Response,user_client: UserLogin):
     try:
         user = await authenticate_user(user_client)
         if not user:
@@ -54,7 +54,7 @@ async def login_user(response:Response,user_client: UserLogin = Form(...)):
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred while creating the user: {str(e)}"
+            detail=f"An error occurred during login: {str(e)}"
         )
 @router.get("/google/auth")
 async def google_auth():
