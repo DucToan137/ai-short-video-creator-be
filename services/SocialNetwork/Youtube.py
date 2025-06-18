@@ -25,7 +25,18 @@ async def upload_video_to_youtube(user:User,upload_request:VideoUpLoadRequest)->
                 'selfDeclaredMadeForKids': False
             }
         }
-        video_stream = await download_video_media_from_cloud(upload_request.media_id)   # Replace with the actual path to the video file
+        video_stream = await download_video_media_from_cloud(upload_request.media_id)
+        
+        if video_stream is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Video media not found"
+            )
+        if len(video_stream.getvalue()) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Video media is empty"
+            )
         media = MediaIoBaseUpload(
             video_stream,
             chunksize=1024 * 1024,  # 1 MB chunks
