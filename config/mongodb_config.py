@@ -32,7 +32,13 @@ def media_collection():
     """Get media collection"""
     db = get_database()
     return db["media"]
+
 def user_collection():
-    """Get media collection"""
+    """Get user collection"""
     db = get_database()
     return db["users"]
+
+def trending_topics_collection():
+    """Get trending topics collection"""
+    db = get_database()
+    return db["trending_topics"]
