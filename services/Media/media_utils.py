@@ -249,10 +249,10 @@ async def download_video_media_from_cloud(media_id:str) ->BytesIO|None:
     try:
         video = BytesIO()
         media = await get_media_by_id(media_id)
-        if not media or not media.url:
+        if not media or not media.get("url"):
             return None
         async with httpx.AsyncClient() as client:
-            async with client("GET", media.url) as response:
+            async with client.stream("GET", media.get("url")) as response:
                 response.raise_for_status()
                 async for chunk in response.aiter_bytes(8192):
                     video.write(chunk)
