@@ -54,8 +54,7 @@ async def upload_media(file_path: str, user_id: str, folder: str = "media", reso
         media_type = MediaType.VIDEO
     elif upload_result.get("format") in ["mp3", "wav", "ogg"]:
         media_type = MediaType.AUDIO
-    
-    # Create media document
+      # Create media document
     media_doc = MediaModel(
         user_id=user_id,
         content=prompt,
@@ -66,12 +65,13 @@ async def upload_media(file_path: str, user_id: str, folder: str = "media", reso
         created_at=datetime.now(),
         updated_at=datetime.now()
     )
-    
-    # Insert into MongoDB
+      # Insert into MongoDB
     if not media_collection:
         raise Exception("Media collection is not initialized")
     try:
-        media_dict = media_doc.model_dump(by_alias=True)
+        media_dict = media_doc.model_dump(by_alias=True, exclude_unset=True)
+        # Remove _id field completely to let MongoDB generate it
+        media_dict.pop("_id", None)
         result = await media_collection().insert_one(media_dict)
         print(f"Inserted media document into MongoDB with ID {result.inserted_id}")
     except Exception as e:

@@ -7,6 +7,10 @@ from api.routes.auth import router as auth_router
 from api.routes.social import router as social_router
 from api.routes.media import router as media_router
 from api.routes.trending import router as trending_router
+from api.routes.voice import router as voice_router
+from api.routes.background import router as background_router
+from api.routes.subtitle import router as subtitle_router
+from api.routes.video import router as video_router
 import uvicorn
 import time
 import logging
@@ -44,6 +48,10 @@ api.include_router(auth_router)
 api.include_router(media_router)
 api.include_router(social_router)
 api.include_router(trending_router)
+api.include_router(voice_router)
+api.include_router(background_router)
+api.include_router(subtitle_router)
+api.include_router(video_router)
 
 # Request logging middleware
 @api.middleware("http")
