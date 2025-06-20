@@ -5,6 +5,7 @@ ffmpeg-python==0.2.0
 google-api-python-client==2.170.0
 google-auth
 google-auth-oauthlib==1.2.2
+google-genai
 groq==0.28.0
 httpx==0.28.1
 ipython==8.12.3
