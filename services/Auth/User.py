@@ -59,7 +59,7 @@ async def create_user(user:UserCreate) ->User:
 
 async def authenticate_user(user:UserLogin) ->User|None:
     try:
-        userDB = await get_user_by_username(user.username)
+        userDB = await get_user_by_username(user.username) or await get_user_by_email(user.username)
         if not userDB:
             return None
         if not verify_password(user.password,userDB.password):
