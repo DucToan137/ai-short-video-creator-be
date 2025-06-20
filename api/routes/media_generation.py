@@ -1,4 +1,4 @@
-from fastapi import APIRouter, File, UploadFile, Form, HTTPException
+from fastapi import APIRouter, File, UploadFile, Form, HTTPException,BackgroundTasks
 from fastapi.responses import FileResponse
 import os
 from uuid import uuid4
@@ -6,7 +6,7 @@ from typing import Optional
 import tempfile
 # from config import OUTPUT_DIR
 from config import TEMP_DIR
-from services import generate_text, generate_speech, generate_image, transcribe_audio, convert_to_srt, create_video, add_subtitles, upload_media
+from services import generate_text, generate_speech, generate_image, transcribe_audio, convert_to_srt, create_video, add_subtitles, upload_media,cleanup_temp_file
 from typing import Literal
 import json 
 import re
@@ -31,32 +31,35 @@ async def generate_text_endpoint(model: Literal["deepseek", "gemini"] = Form(...
         raise HTTPException(status_code=500, detail=f"Text generation error: {str(e)}")
 
 @router.post("/tts")
-async def text_to_speech(text: str = Form(...), voice: str = Form("Fritz-PlayAI")):
+async def text_to_speech( background_tasks: BackgroundTasks,text: str = Form(...), voice: str = Form("Fritz-PlayAI")):
     """Convert text to speech"""
     output_file = os.path.join(TEMP_DIR, f"{uuid4()}.wav")
     try:
         result_file = generate_speech(text, output_file, voice)
+        background_tasks.add_task(cleanup_temp_file, output_file)
         return FileResponse(result_file, media_type="audio/wav", filename="speech.wav")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"TTS error: {str(e)}")
-    finally:
-        # Clean up temporary file
-        if os.path.exists(output_file) and output_file.startswith(TEMP_DIR):
-            os.remove(output_file)
 
 @router.post("/generate-image")
-async def generate_image_endpoint(model: Literal["flux", "gemini"] = Form(...),prompt: str = Form(...)):
+async def generate_image_endpoint(background_tasks: BackgroundTasks,
+                                  model: Literal["flux", "gemini"] = Form(...),
+                                  prompt: str = Form(...),
+                                  style:Literal["ghibli","watercolor","manga",                            
+                                                "pixar","scifi","oilpainting",
+                                                "dark","lego","realistic",
+                                                "cartoon","vintage","minimalist",
+                                                "fantasy","popart","impressionist"]=Form(None)):
+                                                                        
     """Generate image from text prompt"""
     output_file = os.path.join(TEMP_DIR, f"{uuid4()}.png")
     try:
-        result_file = generate_image(model, prompt, output_file)
+        result_file = generate_image(model, prompt,style, output_file)
+        background_tasks.add_task(cleanup_temp_file, output_file)
         return FileResponse(result_file, media_type="image/png", filename="image.png")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Image generation error: {str(e)}")
-    finally:
-        # Clean up temporary file
-        if os.path.exists(output_file) and output_file.startswith(TEMP_DIR):
-            os.remove(output_file)
+    
 
 @router.post("/transcribe")
 async def transcribe_audio_endpoint(file: UploadFile = File(...), create_srt: bool = Form(False)):

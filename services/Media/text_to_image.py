@@ -1,4 +1,23 @@
-def generate_image(model, prompt, output_file="image.png", width=1024, height=768):
+def generate_image(model, prompt,style=None, output_file="image.png", width=1024, height=768):
+    style_prompts = {
+        "ghibli": "in the style of Studio Ghibli, anime, beautiful, detailed, magical, whimsical",
+        "watercolor": "watercolor painting, soft colors, artistic, painted with watercolors, gentle brushstrokes",
+        "manga": "manga style, black and white, detailed lineart, Japanese comic book art",
+        "pixar": "Pixar animation style, 3D rendered, colorful, cartoon, Disney Pixar movie",
+        "scifi": "sci-fi art, futuristic, cyberpunk, neon colors, high-tech, space age",
+        "oilpainting": "oil painting, classical art, renaissance style, detailed brushwork, rich colors",
+        "dark": "dark art, gothic, mysterious, dramatic lighting, shadows, moody atmosphere",
+        "lego": "LEGO style, made of LEGO bricks, blocky, colorful plastic bricks",
+        "realistic": "photorealistic, highly detailed, professional photography, 8k resolution",
+        "cartoon": "cartoon style, colorful, fun, animated, simple shapes",
+        "vintage": "vintage style, retro, old-fashioned, sepia tones, classic",
+        "minimalist": "minimalist art, simple, clean lines, geometric, modern",
+        "fantasy": "fantasy art, magical, mystical, dragons, medieval, epic fantasy",
+        "popart": "pop art style, bright colors, Andy Warhol inspired, bold graphics",
+        "impressionist": "impressionist painting, soft brushstrokes, light and color, Monet style"
+    }
+    if style and style.lower() in style_prompts:
+        prompt = f"{prompt}, {style_prompts[style.lower()]}"
     if model == "flux":
         import base64
         from PIL import Image

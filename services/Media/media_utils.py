@@ -260,3 +260,11 @@ async def download_video_media_from_cloud(media_id:str) ->BytesIO|None:
         return video
     except Exception as e:
         return None
+    
+def cleanup_temp_file(file_path: str):
+    """Clean up temporary file"""
+    try:
+        if os.path.exists(file_path) and file_path.startswith(TEMP_DIR):
+            os.remove(file_path)
+    except Exception as e:
+        print(f"Error deleting file {file_path}: {e}")
