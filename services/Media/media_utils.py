@@ -1,4 +1,5 @@
 import subprocess
+import imageio_ffmpeg
 import os
 import tempfile
 from config import TEMP_DIR
@@ -44,9 +45,7 @@ async def upload_media(file_path: str, user_id: str, folder: str = "media", reso
         )
         print(f"Uploaded {file_path} to Cloudinary")
     except Exception as e:
-        raise Exception(f"Failed to upload media to Cloudinary: {str(e)}")
-
-    # Determine media type
+        raise Exception(f"Failed to upload media to Cloudinary: {str(e)}")    # Determine media type
     media_type = MediaType.TEXT
     if resource_type == "image" or (resource_type == "auto" and upload_result.get("resource_type") == "image"):
         media_type = MediaType.IMAGE
@@ -185,6 +184,7 @@ async def delete_media(media_id: str, user_id: str) -> bool:
 
 def create_video(image_path, audio_path, output_path=None):
     """Create a video from an image and audio using FFmpeg"""
+    ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
     if not output_path:
         output_path = os.path.join(TEMP_DIR, f"{os.path.splitext(os.path.basename(image_path))[0]}.mp4")
     
@@ -195,7 +195,7 @@ def create_video(image_path, audio_path, output_path=None):
     
     try:
         command = [
-            "ffmpeg",
+            ffmpeg_path,
             "-loop", "1",  # Loop the image
             "-i", image_path,  # Input image
             "-i", audio_path,  # Input audio
