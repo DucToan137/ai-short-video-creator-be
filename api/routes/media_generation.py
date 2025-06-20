@@ -6,20 +6,11 @@ from typing import Optional
 import tempfile
 # from config import OUTPUT_DIR
 from config import TEMP_DIR
-from services import generate_text, generate_speech, generate_image, transcribe_audio, convert_to_srt, create_video, add_subtitles, upload_media,cleanup_temp_file
+from services import generate_text, generate_speech, generate_image, transcribe_audio, convert_to_srt, create_video, add_subtitles, upload_media,cleanup_temp_file, cleanup_temp_files
 from typing import Literal
 import json 
 import re
 from starlette.background import BackgroundTasks
-
-def cleanup_temp_files(files: list[str]):
-    for f in files:
-        if os.path.exists(f):
-            try:
-                os.remove(f)
-            except Exception as e:
-                print(f"Error deleting temporary file {f}: {e}")
-
 
 router = APIRouter(prefix="/media", tags=["Media Generation"])
 

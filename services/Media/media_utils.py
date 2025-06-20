@@ -280,3 +280,11 @@ def cleanup_temp_file(file_path: str):
             os.remove(file_path)
     except Exception as e:
         print(f"Error deleting file {file_path}: {e}")
+
+def cleanup_temp_files(files: list[str]):
+    for f in files:
+        if os.path.exists(f):
+            try:
+                os.remove(f)
+            except Exception as e:
+                print(f"Error deleting temporary file {f}: {e}")
