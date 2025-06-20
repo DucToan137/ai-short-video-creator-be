@@ -1,4 +1,5 @@
 import subprocess
+import imageio_ffmpeg
 import os
 import tempfile
 from config import TEMP_DIR
@@ -44,9 +45,7 @@ async def upload_media(file_path: str, user_id: str, folder: str = "media", reso
         )
         print(f"Uploaded {file_path} to Cloudinary")
     except Exception as e:
-        raise Exception(f"Failed to upload media to Cloudinary: {str(e)}")
-
-    # Determine media type
+        raise Exception(f"Failed to upload media to Cloudinary: {str(e)}")    # Determine media type
     media_type = MediaType.TEXT
     if resource_type == "image" or (resource_type == "auto" and upload_result.get("resource_type") == "image"):
         media_type = MediaType.IMAGE
@@ -54,8 +53,7 @@ async def upload_media(file_path: str, user_id: str, folder: str = "media", reso
         media_type = MediaType.VIDEO
     elif upload_result.get("format") in ["mp3", "wav", "ogg"]:
         media_type = MediaType.AUDIO
-    
-    # Create media document
+      # Create media document
     media_doc = MediaModel(
         user_id=user_id,
         content=prompt,
@@ -66,12 +64,13 @@ async def upload_media(file_path: str, user_id: str, folder: str = "media", reso
         created_at=datetime.now(),
         updated_at=datetime.now()
     )
-    
-    # Insert into MongoDB
+      # Insert into MongoDB
     if not media_collection:
         raise Exception("Media collection is not initialized")
     try:
-        media_dict = media_doc.model_dump(by_alias=True)
+        media_dict = media_doc.model_dump(by_alias=True, exclude_unset=True)
+        # Remove _id field completely to let MongoDB generate it
+        media_dict.pop("_id", None)
         result = await media_collection().insert_one(media_dict)
         print(f"Inserted media document into MongoDB with ID {result.inserted_id}")
     except Exception as e:
@@ -88,11 +87,21 @@ async def get_media_by_id(media_id: str) -> Optional[Dict]:
     """Get media by ID"""
     try:
         from bson import ObjectId
-        media = await media_collection().find_one({"_id": ObjectId(media_id)})
+        
+        # Try to convert to ObjectId, if fails, use as string (for custom IDs)
+        try:
+            query_id = ObjectId(media_id)
+            media = await media_collection().find_one({"_id": query_id})
+        except:
+            # If not a valid ObjectId, try searching by custom ID or string ID
+            media = await media_collection().find_one({"id": media_id})
+        
         if media:
-            media["id"] = str(media["_id"])
-            media["user_id"] = str(media["user_id"])
-            del media["_id"]
+            media["id"] = str(media.get("_id", media.get("id", media_id)))
+            if "user_id" in media and media["user_id"]:
+                media["user_id"] = str(media["user_id"])
+            if "_id" in media:
+                del media["_id"]
         return media
     except Exception as e:
         print(f"Error getting media: {e}")
@@ -175,8 +184,14 @@ async def delete_media(media_id: str, user_id: str) -> bool:
 
 def create_video(image_path, audio_path, srt_path, output_path=None):
     """Create a video from an image and audio using FFmpeg"""
+    ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
     if not output_path:
         output_path = os.path.join(TEMP_DIR, f"{os.path.splitext(os.path.basename(image_path))[0]}.mp4")
+    
+    print(f"Creating video with:")
+    print(f"  Image: {image_path} (exists: {os.path.exists(image_path)})")
+    print(f"  Audio: {audio_path} (exists: {os.path.exists(audio_path)})")
+    print(f"  Output: {output_path}")
     
     try:
         # Convert paths to absolute paths with forward slashes
@@ -185,28 +200,23 @@ def create_video(image_path, audio_path, srt_path, output_path=None):
         srt_path_abs = srt_path.replace('\\', '/')
 
         command = [
-            "ffmpeg",
-            "-loop", "1",
-            "-i", image_path_abs,  # Input image
-            "-i", audio_path_abs,  # Input audio
-            "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,"
-                "pad=1080:1920:(ow-iw)/2:(oh-ih)/2,"
-                f"subtitles={srt_path_abs}:charenc=UTF-8",
-            "-c:v", "libx264",
-            "-tune", "stillimage",
-            "-c:a", "aac",
-            "-b:a", "192k",
-            "-pix_fmt", "yuv420p",
-            "-shortest",
-            "-y",
-            output_path
+            ffmpeg_path,
+            "-loop", "1",  # Loop the image
+            "-i", image_path,  # Input image
+            "-i", audio_path,  # Input audio
+            "-c:v", "libx264",  # Video codec
+            "-tune", "stillimage",  # Optimize for still images
+            "-c:a", "aac",  # Audio codec
+            "-b:a", "192k",  # Audio bitrate
+            "-pix_fmt", "yuv420p",  # Pixel format
+            "-shortest",  # Match video duration to audio
+            "-y",  # Overwrite output file if it exists
+            output_path  # Output file
         ]
 
-        try:
-            subprocess.run(command, check=True)
-        except subprocess.CalledProcessError as e:
-            print("FFmpeg error:")
-            print(e)
+        print(f"FFmpeg command: {' '.join(command)}")
+        subprocess.run(command, check=True)
+        print(f"Video created successfully: {output_path}")
         return output_path
     except Exception as e:
         print(f"Error creating video: {e}")

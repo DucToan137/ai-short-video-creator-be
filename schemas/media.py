@@ -1,7 +1,19 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional, Dict
+from typing import Optional, Dict, Union
 from models.media import MediaType
+
+# Schema for subtitle style
+class SubtitleStyle(BaseModel):
+    name: str = Field(default="default", description="Style name")
+    fontFamily: str = Field(default="Arial", description="Font family")
+    fontSize: int = Field(default=16, description="Font size")
+    fontColor: str = Field(default="#FFFFFF", description="Font color")
+    backgroundColor: str = Field(default="#000000", description="Background color")
+    backgroundOpacity: float = Field(default=0.7, description="Background opacity")
+    position: str = Field(default="bottom", description="Subtitle position")
+    outline: bool = Field(default=True, description="Enable outline")
+    outlineColor: str = Field(default="#000000", description="Outline color")
 
 # Schema for creating new media
 class MediaCreate(BaseModel):
@@ -13,6 +25,24 @@ class MediaCreate(BaseModel):
 class MediaUpdate(BaseModel):
     content: Optional[str] = Field(None, min_length=1, max_length=500, description="Prompt or text content for the media")
     metadata: Optional[Dict] = Field(None, description="Additional metadata")
+
+# Schema for complete video creation
+class CompleteVideoRequest(BaseModel):
+    script_text: str = Field(..., description="Script content for the video")
+    voice_id: str = Field(..., description="ID of the voice to use")
+    background_image_id: str = Field(..., description="ID of the background image")
+    subtitle_enabled: bool = Field(default=True, description="Whether to enable subtitles")
+    subtitle_language: str = Field(default="en", description="Language for subtitles")
+    subtitle_style: Union[str, SubtitleStyle] = Field(default="default", description="Style for subtitles")
+
+# Schema for video from components
+class VideoFromComponentsRequest(BaseModel):
+    audio_file_id: str = Field(..., description="ID of the audio file")
+    background_image_id: str = Field(..., description="ID of the background image")
+    script_text: Optional[str] = Field(None, description="Script text for subtitles")
+    subtitle_enabled: bool = Field(default=False, description="Whether to enable subtitles")
+    subtitle_language: str = Field(default="en", description="Language for subtitles")
+    subtitle_style: Union[str, SubtitleStyle] = Field(default="default", description="Style for subtitles")
 
 # Schema for media response
 class MediaResponse(BaseModel):

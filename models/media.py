@@ -6,7 +6,12 @@ from enum import Enum
 from pydantic.functional_validators import BeforeValidator
 from typing_extensions import Annotated
 
-PyObjectId = Annotated[str, BeforeValidator(str)]
+def str_to_objectid(v):
+    if isinstance(v, ObjectId):
+        return str(v)
+    return str(v)
+
+PyObjectId = Annotated[str, BeforeValidator(str_to_objectid)]
 
 # Media type enum
 class MediaType(str, Enum):
@@ -17,7 +22,7 @@ class MediaType(str, Enum):
 
 # Media model for MongoDB
 class MediaModel(BaseModel):
-    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    id: Optional[PyObjectId] = Field(default=None, alias="_id")
     user_id: PyObjectId  # Link to user
     content: str
     media_type: MediaType

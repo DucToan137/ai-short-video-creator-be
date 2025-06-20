@@ -19,6 +19,13 @@ pymongo==4.13.2
 python-dotenv==1.1.0
 python-jose[cryptography]==3.5.0
 python-multipart
+passlib[bcrypt]
+python-jose[cryptography]
+email-validator
+httpx
+google-auth
+google-auth-oauthlib
+google-api-python-client
 requests==2.32.4
 schedule==1.2.2
 starlette

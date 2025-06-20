@@ -8,3 +8,6 @@ from .Auth.GoogleAuth import *
 from .Auth.FacebookAuth import *
 from .trending_topics import *
 from .internet_trends import *
+from .voice_service import *
+from .background_service import *
+from .subtitle_service import *
