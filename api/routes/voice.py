@@ -66,12 +66,16 @@ async def generate_voice(request: VoiceGenerationRequest):
         speed = getattr(settings, 'speed', 1.0)
         pitch = getattr(settings, 'pitch', 0)
         
-        # Generate audio
-        result = generate_voice_audio(
+        # TODO: Get user_id from authentication when available
+        user_id = "preview_user"  # For now, use a default user for preview
+        
+        # Generate audio using async function
+        result = await generate_voice_audio(
             text=request.text,
             voice_id=request.voice_id,
             speed=speed,
-            pitch=pitch
+            pitch=pitch,
+            user_id=user_id
         )
         
         return VoiceGenerationResponse(

@@ -88,11 +88,21 @@ async def get_media_by_id(media_id: str) -> Optional[Dict]:
     """Get media by ID"""
     try:
         from bson import ObjectId
-        media = await media_collection().find_one({"_id": ObjectId(media_id)})
+        
+        # Try to convert to ObjectId, if fails, use as string (for custom IDs)
+        try:
+            query_id = ObjectId(media_id)
+            media = await media_collection().find_one({"_id": query_id})
+        except:
+            # If not a valid ObjectId, try searching by custom ID or string ID
+            media = await media_collection().find_one({"id": media_id})
+        
         if media:
-            media["id"] = str(media["_id"])
-            media["user_id"] = str(media["user_id"])
-            del media["_id"]
+            media["id"] = str(media.get("_id", media.get("id", media_id)))
+            if "user_id" in media and media["user_id"]:
+                media["user_id"] = str(media["user_id"])
+            if "_id" in media:
+                del media["_id"]
         return media
     except Exception as e:
         print(f"Error getting media: {e}")
@@ -178,6 +188,11 @@ def create_video(image_path, audio_path, output_path=None):
     if not output_path:
         output_path = os.path.join(TEMP_DIR, f"{os.path.splitext(os.path.basename(image_path))[0]}.mp4")
     
+    print(f"Creating video with:")
+    print(f"  Image: {image_path} (exists: {os.path.exists(image_path)})")
+    print(f"  Audio: {audio_path} (exists: {os.path.exists(audio_path)})")
+    print(f"  Output: {output_path}")
+    
     try:
         command = [
             "ffmpeg",
@@ -194,7 +209,9 @@ def create_video(image_path, audio_path, output_path=None):
             output_path  # Output file
         ]
 
+        print(f"FFmpeg command: {' '.join(command)}")
         subprocess.run(command, check=True)
+        print(f"Video created successfully: {output_path}")
         return output_path
     except Exception as e:
         print(f"Error creating video: {e}")

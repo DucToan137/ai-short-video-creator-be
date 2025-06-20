@@ -231,21 +231,22 @@ async def generate_custom_background(prompt: str, style: str = "realistic", reso
                     "resolution": resolution,
                     "prompt": prompt,
                     "type": "generated_background"
-                }
-            )
+                }            )
+            
+            print(f"Upload result: {upload_result}")  # Debug logging
             
             # Clean up local file
             if os.path.exists(result_file):
                 os.remove(result_file)
             
-            # Create background record with Cloudinary URL
-            background_id = f"custom_{uuid4().hex[:8]}"
+            # Use the actual database ID from upload_media
+            background_id = upload_result["id"]
             
             return {
                 "id": background_id,
                 "title": f"Custom: {prompt[:50]}{'...' if len(prompt) > 50 else ''}",
                 "category": "Custom",
-                "image_url": upload_result["url"],  # Use Cloudinary URL
+                "image_url": upload_result["url"],  # Use URL from upload_result
                 "thumbnail_url": upload_result["url"],  # Use same URL for thumbnail
                 "tags": ["custom", "generated", style],
                 "premium": False,
@@ -253,11 +254,12 @@ async def generate_custom_background(prompt: str, style: str = "realistic", reso
                 "cloudinary_id": upload_result["id"],
                 "public_id": upload_result["public_id"],
                 "prompt": prompt,
-                "style": style,
+                "style": style,                
                 "resolution": resolution
             }
             
         except Exception as upload_error:
+            print(f"Upload error details: {upload_error}")  # Debug logging
             # If upload fails, clean up the file and reraise
             if os.path.exists(result_file):
                 os.remove(result_file)

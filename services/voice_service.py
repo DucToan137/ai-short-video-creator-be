@@ -4,7 +4,7 @@ from services.Media.text_to_speech import generate_speech
 from config import TEMP_DIR
 from uuid import uuid4
 
-# Voice data mapping from frontend mockdata
+# Voice data mapping from frontend mockdata with real Groq voices
 AVAILABLE_VOICES = [
     {
         "id": "v1",
@@ -13,7 +13,7 @@ AVAILABLE_VOICES = [
         "language": "English",
         "accent": "American",
         "tags": ["clear", "professional", "authoritative"],
-        "groq_voice": "Fritz-PlayAI"  # Default Groq voice
+        "groq_voice": "Fritz-PlayAI"  # Male, clear voice
     },
     {
         "id": "v2", 
@@ -22,7 +22,7 @@ AVAILABLE_VOICES = [
         "language": "English", 
         "accent": "British",
         "tags": ["warm", "friendly", "engaging"],
-        "groq_voice": "Fritz-PlayAI"
+        "groq_voice": "Eleanor-PlayAI"  # Female, British-like voice
     },
     {
         "id": "v3",
@@ -31,7 +31,7 @@ AVAILABLE_VOICES = [
         "language": "English",
         "accent": "Australian", 
         "tags": ["casual", "conversational", "relaxed"],
-        "groq_voice": "Fritz-PlayAI"
+        "groq_voice": "Calum-PlayAI"  # Male, casual voice
     },
     {
         "id": "v4",
@@ -40,7 +40,7 @@ AVAILABLE_VOICES = [
         "language": "English", 
         "accent": "American",
         "tags": ["energetic", "youthful", "upbeat"],
-        "groq_voice": "Fritz-PlayAI"
+        "groq_voice": "Cheyenne-PlayAI"  # Female, energetic voice
     },
     {
         "id": "v5",
@@ -48,7 +48,7 @@ AVAILABLE_VOICES = [
         "gender": "neutral",
         "language": "English",
         "tags": ["neutral", "balanced", "clear"],
-        "groq_voice": "Fritz-PlayAI"
+        "groq_voice": "Quinn-PlayAI"  # Neutral voice
     },
     {
         "id": "v6",
@@ -56,7 +56,7 @@ AVAILABLE_VOICES = [
         "gender": "male",
         "language": "Japanese", 
         "tags": ["professional", "calm", "measured"],
-        "groq_voice": "Fritz-PlayAI"
+        "groq_voice": "Mikail-PlayAI"  # Male, professional voice
     },
     {
         "id": "v7",
@@ -65,7 +65,7 @@ AVAILABLE_VOICES = [
         "language": "Spanish",
         "accent": "Latin American",
         "tags": ["warm", "friendly", "expressive"], 
-        "groq_voice": "Fritz-PlayAI"
+        "groq_voice": "Celeste-PlayAI"  # Female, expressive voice
     },
     {
         "id": "v8",
@@ -73,7 +73,44 @@ AVAILABLE_VOICES = [
         "gender": "male",
         "language": "French",
         "tags": ["sophisticated", "clear", "articulate"],
-        "groq_voice": "Fritz-PlayAI"
+        "groq_voice": "Angelo-PlayAI"  # Male, sophisticated voice
+    },
+    # Add more Groq voices to give users more options
+    {
+        "id": "v9",
+        "name": "Ruby",
+        "gender": "female",
+        "language": "English",
+        "accent": "American",
+        "tags": ["mature", "authoritative", "news"],
+        "groq_voice": "Ruby-PlayAI"  # Female, news anchor style
+    },
+    {
+        "id": "v10",
+        "name": "Thunder",
+        "gender": "male",
+        "language": "English",
+        "accent": "American",
+        "tags": ["deep", "powerful", "dramatic"],
+        "groq_voice": "Thunder-PlayAI"  # Male, deep voice
+    },
+    {
+        "id": "v11",
+        "name": "Jennifer",
+        "gender": "female",
+        "language": "English",
+        "accent": "American",
+        "tags": ["professional", "clear", "business"],
+        "groq_voice": "Jennifer-PlayAI"  # Female, business voice
+    },
+    {
+        "id": "v12",
+        "name": "Mason",
+        "gender": "male",
+        "language": "English",
+        "accent": "American",
+        "tags": ["young", "friendly", "casual"],
+        "groq_voice": "Mason-PlayAI"  # Male, young voice
     }
 ]
 
@@ -123,7 +160,7 @@ def get_voices_by_gender(gender: str) -> List[Dict]:
         if voice["gender"].lower() == gender.lower()
     ]
 
-def generate_voice_audio(text: str, voice_id: str, speed: float = 1.0, pitch: int = 0) -> Dict:
+async def generate_voice_audio(text: str, voice_id: str, speed: float = 1.0, pitch: int = 0, user_id: str = None) -> Dict:
     """
     Generate audio from text using specified voice and settings
     
@@ -132,6 +169,7 @@ def generate_voice_audio(text: str, voice_id: str, speed: float = 1.0, pitch: in
         voice_id: Voice ID to use
         speed: Speaking speed (0.5-2.0) 
         pitch: Voice pitch (-10 to +10)
+        user_id: User ID for Cloudinary upload
         
     Returns:
         Dict with audio_url, duration, voice_id, and settings
@@ -144,38 +182,43 @@ def generate_voice_audio(text: str, voice_id: str, speed: float = 1.0, pitch: in
                 voice_config = voice
                 break
                 
+        # Fallback to default voice if not found
         if not voice_config:
-            raise ValueError(f"Voice {voice_id} not found")
-        
-        # Generate audio file
-        output_file = os.path.join(TEMP_DIR, f"voice_{voice_id}_{uuid4()}.wav")
+            print(f"Warning: Voice {voice_id} not found, using default Fritz-PlayAI")
+            voice_config = {
+                "id": voice_id,
+                "name": "Default",
+                "groq_voice": "Fritz-PlayAI"
+            }
         
         # Use Groq TTS with the mapped voice
         groq_voice = voice_config["groq_voice"]
-        result_file = generate_speech(text, output_file, groq_voice)
+        print(f"Using Groq voice: {groq_voice} for voice_id: {voice_id}")
         
-        if not result_file or not os.path.exists(result_file):
-            raise Exception("Failed to generate audio file")
+        # Generate speech using async version with Cloudinary upload
+        from services.Media.text_to_speech import generate_speech_async
+        result = await generate_speech_async(text, groq_voice, user_id)
         
-        # Calculate estimated duration (rough estimation)
-        word_count = len(text.split())
-        base_duration = word_count * 0.5  # ~0.5 seconds per word
+        if not result:
+            raise Exception("Failed to generate audio")
+        
+        # Calculate adjusted duration for speed
+        base_duration = result["duration"]
         adjusted_duration = base_duration / speed  # Adjust for speed
         
-        # In a real implementation, you would:
-        # 1. Apply speed/pitch modifications using audio processing libraries
-        # 2. Upload to cloud storage and get permanent URL
-        # 3. Get actual audio duration
+        # Return result with Cloudinary URL if available, otherwise fallback URL
+        audio_url = result.get("audio_url", f"/media/audio/{os.path.basename(result.get('audio_path', 'unknown.wav'))}")
         
         return {
-            "audio_url": f"/media/audio/{os.path.basename(result_file)}",
+            "audio_url": audio_url,
             "duration": adjusted_duration,
             "voice_id": voice_id,
             "settings": {
                 "speed": speed,
                 "pitch": pitch
             },
-            "local_file": result_file  # For internal use
+            "audio_id": result.get("audio_id"),  # For database reference
+            "cloudinary_public_id": result.get("cloudinary_public_id")  # For Cloudinary reference
         }
         
     except Exception as e:
