@@ -10,6 +10,16 @@ from services import generate_text, generate_speech, generate_image, transcribe_
 from typing import Literal
 import json 
 import re
+from starlette.background import BackgroundTasks
+
+def cleanup_temp_files(files: list[str]):
+    for f in files:
+        if os.path.exists(f):
+            try:
+                os.remove(f)
+            except Exception as e:
+                print(f"Error deleting temporary file {f}: {e}")
+
 
 router = APIRouter(prefix="/media", tags=["Media Generation"])
 
@@ -59,8 +69,8 @@ async def generate_image_endpoint(model: Literal["flux", "gemini"] = Form(...),p
             os.remove(output_file)
 
 @router.post("/transcribe")
-async def transcribe_audio_endpoint(file: UploadFile = File(...), create_srt: bool = Form(False)):
-    """Transcribe audio to text"""
+async def transcribe_audio_endpoint(file: UploadFile = File(...), script: Optional[str] = Form(""), create_srt: bool = Form(False)):
+    """Transcribe audio to SRT format"""
     # Save uploaded file temporarily
     temp_file = os.path.join(TEMP_DIR, f"{uuid4()}.wav")
     with open(temp_file, "wb") as f:
@@ -69,12 +79,13 @@ async def transcribe_audio_endpoint(file: UploadFile = File(...), create_srt: bo
     try:
         if create_srt:
             srt_file = os.path.join(TEMP_DIR, f"{uuid4()}.srt")
-            transcription = transcribe_audio(temp_file, srt_file)
+            transcription = transcribe_audio(audio_file = temp_file, output_srt = srt_file, script=script)
             return FileResponse(srt_file, media_type="text/plain", filename="transcription.srt")
             
         else:
-            transcription = transcribe_audio(temp_file)
-            return {"text": transcription.text}
+            transcription = transcribe_audio(aduio_file = temp_file, script=script)
+
+            return {"srt": transcription}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Transcription error: {str(e)}")
     finally:
@@ -86,7 +97,8 @@ async def transcribe_audio_endpoint(file: UploadFile = File(...), create_srt: bo
 async def create_video_endpoint(
     image: UploadFile = File(...),
     audio: UploadFile = File(...),
-    is_add_subtitles: bool = Form(False)
+    script: Optional[str] = Form(""),
+    background_tasks: BackgroundTasks = None,
 ):
     """Create video from image and audio"""
     # Create temp files with specific file extensions
@@ -101,36 +113,24 @@ async def create_video_endpoint(
         with open(temp_audio, "wb") as f:
             f.write(await audio.read())
         
+        # Create SRT file
+        srt_file = os.path.join(TEMP_DIR, f"{uuid4()}.srt")
+        temp_files.append(srt_file)
+        transcription = transcribe_audio(temp_audio, srt_file, script)
+
         # Create video
         output_video = os.path.join(TEMP_DIR, f"{uuid4()}.mp4")
         temp_files.append(output_video)
-        result_file = create_video(temp_image, temp_audio, output_video)
+        result_file = create_video(temp_image, temp_audio, srt_file, output_video)
         
         if result_file is None:
             raise HTTPException(status_code=500, detail="Failed to create video")
         
-        if is_add_subtitles:
-            # Create SRT file
-            srt_file = os.path.join(TEMP_DIR, f"{uuid4()}.srt")
-            temp_files.append(srt_file)
-            transcription = transcribe_audio(temp_audio, srt_file)
-            
-            # Add subtitles
-            output_with_subs = os.path.join(TEMP_DIR, f"{uuid4()}_subtitled.mp4")
-            temp_files.append(output_with_subs)
-            
-            result_file = add_subtitles(output_video, srt_file, output_with_subs)
-            if result_file is None:
-                raise HTTPException(status_code=500, detail="Failed to add subtitles")
-
+        # Add background task to clean up temporary files after response is sent
+        background_tasks.add_task(cleanup_temp_files, temp_files)
+        
         return FileResponse(result_file, media_type="video/mp4", filename="output.mp4")
     except Exception as e:
+        # Clean up any temporary files in case of error
+        cleanup_temp_files(temp_files)
         raise HTTPException(status_code=500, detail=f"Video creation error: {str(e)}")
-    finally:
-        # Clean up all temp files 
-        for f in temp_files:
-            if os.path.exists(f):
-                try:
-                    os.remove(f)
-                except Exception as e:
-                    print(f"Error deleting temporary file {f}: {e}")
