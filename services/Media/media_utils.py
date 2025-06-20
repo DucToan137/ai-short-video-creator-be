@@ -173,28 +173,40 @@ async def delete_media(media_id: str, user_id: str) -> bool:
         print(f"Error deleting media: {e}")
         return False
 
-def create_video(image_path, audio_path, output_path=None):
+def create_video(image_path, audio_path, srt_path, output_path=None):
     """Create a video from an image and audio using FFmpeg"""
     if not output_path:
         output_path = os.path.join(TEMP_DIR, f"{os.path.splitext(os.path.basename(image_path))[0]}.mp4")
     
     try:
+        # Convert paths to absolute paths with forward slashes
+        image_path_abs = image_path.replace('\\', '/')
+        audio_path_abs = audio_path.replace('\\', '/')
+        srt_path_abs = srt_path.replace('\\', '/')
+
         command = [
             "ffmpeg",
-            "-loop", "1",  # Loop the image
-            "-i", image_path,  # Input image
-            "-i", audio_path,  # Input audio
-            "-c:v", "libx264",  # Video codec
-            "-tune", "stillimage",  # Optimize for still images
-            "-c:a", "aac",  # Audio codec
-            "-b:a", "192k",  # Audio bitrate
-            "-pix_fmt", "yuv420p",  # Pixel format
-            "-shortest",  # Match video duration to audio
-            "-y",  # Overwrite output file if it exists
-            output_path  # Output file
+            "-loop", "1",
+            "-i", image_path_abs,  # Input image
+            "-i", audio_path_abs,  # Input audio
+            "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,"
+                "pad=1080:1920:(ow-iw)/2:(oh-ih)/2,"
+                f"subtitles={srt_path_abs}:charenc=UTF-8",
+            "-c:v", "libx264",
+            "-tune", "stillimage",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-pix_fmt", "yuv420p",
+            "-shortest",
+            "-y",
+            output_path
         ]
 
-        subprocess.run(command, check=True)
+        try:
+            subprocess.run(command, check=True)
+        except subprocess.CalledProcessError as e:
+            print("FFmpeg error:")
+            print(e)
         return output_path
     except Exception as e:
         print(f"Error creating video: {e}")
