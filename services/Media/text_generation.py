@@ -64,3 +64,49 @@ def generate_text(model, prompt):
             contents=[get_prompt(prompt)],  
         )
         return response.text
+
+def generate_image_prompts_from_script(script_text: str, count: int = 3) -> list:
+    """
+    Generate image prompts from script text for background generation
+    """
+    try:
+        import json
+        
+        prompt = f"""
+You are an expert at creating visual prompts for AI image generation.
+
+Given a video script, generate {count} distinct image prompts in English that would make good background scenes for this video.
+
+Each prompt should:
+1. Describe a visual scene that complements the script content
+2. Be detailed enough for AI image generation
+3. Focus on backgrounds/environments rather than characters
+4. Be visually distinct from each other
+
+Return the result strictly in JSON format:
+{{
+  "image_prompts": [
+    "prompt 1",
+    "prompt 2", 
+    "prompt 3"
+  ]
+}}
+
+Script: {script_text}
+"""
+        
+        # Use the existing generate_text function with deepseek model
+        response = generate_text("deepseek", prompt)
+        
+        # Parse the JSON response
+        result = json.loads(response)
+        return result.get("image_prompts", [])
+        
+    except Exception as e:
+        print(f"Error generating image prompts from script: {e}")
+        # Fallback: return simple prompts based on script keywords
+        return [
+            f"Background scene for: {script_text[:50]}...",
+            f"Environment setting for: {script_text[:50]}...",
+            f"Visual backdrop for: {script_text[:50]}..."
+        ][:count]

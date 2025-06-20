@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional, Dict, Union
+from typing import Optional, Dict, Union, List
 from models.media import MediaType
 
 # Schema for subtitle style
@@ -30,7 +30,8 @@ class MediaUpdate(BaseModel):
 class CompleteVideoRequest(BaseModel):
     script_text: str = Field(..., description="Script content for the video")
     voice_id: str = Field(..., description="ID of the voice to use")
-    background_image_id: str = Field(..., description="ID of the background image")
+    background_image_id: str = Field(..., description="ID of the background image (legacy)")
+    background_image_ids: Optional[List[str]] = Field(None, description="IDs of multiple background images")
     subtitle_enabled: bool = Field(default=True, description="Whether to enable subtitles")
     subtitle_language: str = Field(default="en", description="Language for subtitles")
     subtitle_style: Union[str, SubtitleStyle] = Field(default="default", description="Style for subtitles")
@@ -38,7 +39,8 @@ class CompleteVideoRequest(BaseModel):
 # Schema for video from components
 class VideoFromComponentsRequest(BaseModel):
     audio_file_id: str = Field(..., description="ID of the audio file")
-    background_image_id: str = Field(..., description="ID of the background image")
+    background_image_id: str = Field(..., description="ID of the background image (legacy)")
+    background_image_ids: Optional[List[str]] = Field(None, description="IDs of multiple background images")
     script_text: Optional[str] = Field(None, description="Script text for subtitles")
     subtitle_enabled: bool = Field(default=False, description="Whether to enable subtitles")
     subtitle_language: str = Field(default="en", description="Language for subtitles")

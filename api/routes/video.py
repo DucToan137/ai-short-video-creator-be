@@ -9,7 +9,7 @@ import httpx
 
 from api.deps import get_current_user
 from models.user import User
-from services.Media.media_utils import create_video, add_subtitles, upload_media, get_media_by_id
+from services.Media.media_utils import create_video, create_multi_scene_video, add_subtitles, upload_media, get_media_by_id
 from services.Media.text_to_speech import generate_speech_async
 from services.subtitle_service import generate_srt_content
 from config import TEMP_DIR
@@ -25,12 +25,48 @@ async def create_complete_video(
     """
     Create a complete video from script, voice, background, and optionally subtitles
     """
+    # try:
+    #     user_id = str(current_user.id)        # Step 1: Generate audio from script
+    #     print("Generating audio from script...")
+    #     audio_path = None
+    #     fallback_audio_path = os.path.join(TEMP_DIR, "voice_v1_166ef5ee-d315-4883-b3b1-b53f6d8e083b.wav")
+    #     fallback_audio_url = "https://res.cloudinary.com/dsozekr7k/video/upload/v1750415589/audio/pymxnd8dbtlb9rsqwmxe.wav"
+    #     try:
+    #         audio_result = await generate_speech_async(request.script_text, request.voice_id, user_id)            
+    #         if audio_result and audio_result.get("audio_url"):
+    #             # Download audio from Cloudinary to temp file for video creation
+    #             audio_path = os.path.join(TEMP_DIR, f"audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav")
+    #             async with httpx.AsyncClient() as client:
+    #                 audio_response = await client.get(audio_result["audio_url"])
+    #                 audio_response.raise_for_status()
+    #                 with open(audio_path, "wb") as f:
+    #                     f.write(audio_response.content)
+    #             print(f"✅ Successfully generated and downloaded audio: {audio_path}")
+    #         else:
+    #             raise Exception("No audio URL returned from generation")
+                
+    #     except Exception as e:
+    #         print(f"⚠️ Audio generation failed: {e}")
+    #         # Use fallback audio file if available
+    #         if os.path.exists(fallback_audio_path):
+    #             audio_path = fallback_audio_path
+    #             print(f"🔄 Using fallback audio file: {fallback_audio_path}")
+    #             # Create a mock audio_result for metadata
+    #             audio_result = {
+    #                 "audio_url": f"file://{fallback_audio_path}",
+    #                 "duration": 30,  # Estimated duration
+    #                 "audio_id": "fallback_audio"
+    #             }
+    #         else:
+    #             print(f"❌ Fallback audio file not found: {fallback_audio_path}")
+    #             raise HTTPException(status_code=500, detail="Failed to generate audio and no fallback available")
     try:
         user_id = str(current_user.id)        # Step 1: Generate audio from script
         print("Generating audio from script...")
         audio_path = None
-        fallback_audio_path = os.path.join(TEMP_DIR, "audio_20250620_173309.wav")
-        
+        fallback_audio_path = os.path.join(TEMP_DIR, "fallback_audio.wav")
+        fallback_audio_url = "https://res.cloudinary.com/dsozekr7k/video/upload/v1750415589/audio/pymxnd8dbtlb9rsqwmxe.wav"
+
         try:
             audio_result = await generate_speech_async(request.script_text, request.voice_id, user_id)            
             if audio_result and audio_result.get("audio_url"):
@@ -44,43 +80,82 @@ async def create_complete_video(
                 print(f"✅ Successfully generated and downloaded audio: {audio_path}")
             else:
                 raise Exception("No audio URL returned from generation")
-                
+
         except Exception as e:
             print(f"⚠️ Audio generation failed: {e}")
-            # Use fallback audio file if available
-            if os.path.exists(fallback_audio_path):
-                audio_path = fallback_audio_path
-                print(f"🔄 Using fallback audio file: {fallback_audio_path}")
-                # Create a mock audio_result for metadata
-                audio_result = {
-                    "audio_url": f"file://{fallback_audio_path}",
-                    "duration": 30,  # Estimated duration
-                    "audio_id": "fallback_audio"
-                }
-            else:
-                print(f"❌ Fallback audio file not found: {fallback_audio_path}")
-                raise HTTPException(status_code=500, detail="Failed to generate audio and no fallback available")
-        
+            # Fallback: download fallback audio if not already downloaded
+            if not os.path.exists(fallback_audio_path):
+                try:
+                    print(f"🔄 Downloading fallback audio from: {fallback_audio_url}")
+                    async with httpx.AsyncClient() as client:
+                        fallback_response = await client.get(fallback_audio_url)
+                        fallback_response.raise_for_status()
+                        with open(fallback_audio_path, "wb") as f:
+                            f.write(fallback_response.content)
+                    print(f"✅ Fallback audio downloaded: {fallback_audio_path}")
+                except Exception as download_err:
+                    print(f"❌ Failed to download fallback audio: {download_err}")
+                    raise HTTPException(status_code=500, detail="Failed to generate audio and fallback download failed.")
+
+            # Use fallback audio file
+            audio_path = fallback_audio_path
+            print(f"🔄 Using fallback audio file: {fallback_audio_path}")
+            audio_result = {
+                "audio_url": f"file://{fallback_audio_path}",
+                "duration": 30,  # Estimated or fixed duration
+                "audio_id": "fallback_audio"
+            }
+
+        except Exception as final_err:
+            print(f"❌ Unexpected failure: {final_err}")
+            raise HTTPException(status_code=500, detail="Unexpected failure in audio processing.")
+    
         if not audio_path or not os.path.exists(audio_path):
             raise HTTPException(status_code=500, detail="No audio file available for video creation")
+          # Step 2: Get background images
+        print("Fetching background images...")
+        background_paths = []
+        background_ids = []
         
-        # Step 2: Get background image
-        print("Fetching background image...")
-        background_media = await get_media_by_id(request.background_image_id)
-        if not background_media:
-            raise HTTPException(status_code=404, detail="Background image not found")
-          # Download background image to temp file
-        background_path = os.path.join(TEMP_DIR, f"bg_{request.background_image_id}.jpg")
-        async with httpx.AsyncClient() as client:
-            response = await client.get(background_media["url"])
-            response.raise_for_status()
-            with open(background_path, "wb") as f:
-                f.write(response.content)
+        # Handle multiple background images if provided
+        if request.background_image_ids and len(request.background_image_ids) > 0:
+            background_ids = request.background_image_ids
+            print(f"Using multiple backgrounds: {background_ids}")
+        elif request.background_image_id:
+            background_ids = [request.background_image_id]
+            print(f"Using single background: {request.background_image_id}")
+        else:
+            raise HTTPException(status_code=400, detail="No background image provided")
         
-        # Step 3: Create video from image and audio
-        print("Creating video from image and audio...")
+        # Download all background images
+        for i, bg_id in enumerate(background_ids):
+            background_media = await get_media_by_id(bg_id)
+            if not background_media:
+                print(f"Warning: Background image {bg_id} not found, skipping")
+                continue
+                
+            # Download background image to temp file
+            background_path = os.path.join(TEMP_DIR, f"bg_{bg_id}_{i}.jpg")
+            async with httpx.AsyncClient() as client:
+                response = await client.get(background_media["url"])
+                response.raise_for_status()
+                with open(background_path, "wb") as f:
+                    f.write(response.content)
+            background_paths.append(background_path)
+        
+        if not background_paths:
+            raise HTTPException(status_code=404, detail="No valid background images found")
+        
+        # Step 3: Create video from images and audio
+        print(f"Creating video from {len(background_paths)} image(s) and audio...")
         video_path = os.path.join(TEMP_DIR, f"video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
-        video_result = create_video(background_path, audio_path, video_path)
+        
+        if len(background_paths) > 1:
+            # Multi-scene video
+            video_result = create_multi_scene_video(background_paths, audio_path, video_path)
+        else:
+            # Single scene video
+            video_result = create_video(background_paths[0], audio_path, video_path)
         
         if not video_result:
             raise HTTPException(status_code=500, detail="Failed to create video")
@@ -122,20 +197,22 @@ async def create_complete_video(
             user_id,
             folder="videos",
             resource_type="video",
-            prompt=f"Complete video: {request.script_text[:50]}...",
-            metadata={
+            prompt=f"Complete video: {request.script_text[:50]}...",            metadata={
                 "voice_id": request.voice_id,
                 "audio_id": audio_result.get("audio_id"),  # Link to audio file
-                "background_image_id": request.background_image_id,
+                "background_image_id": request.background_image_id,  # Keep for backward compatibility
+                "background_image_ids": background_ids,  # Multiple background support
+                "is_multi_scene": len(background_ids) > 1,
+                "scene_count": len(background_ids),
                 "subtitle_enabled": request.subtitle_enabled,
                 "subtitle_language": request.subtitle_language,
                 "subtitle_style": subtitle_style_str,
                 "script_text": request.script_text[:200]  # Save partial script for reference
             }
-        )
-          # Clean up temporary files
-        for temp_file in [audio_path, background_path, final_video_path]:
-            if os.path.exists(temp_file):
+        )        # Clean up temporary files
+        cleanup_files = [audio_path, final_video_path] + background_paths
+        for temp_file in cleanup_files:
+            if temp_file and os.path.exists(temp_file):
                 os.remove(temp_file)
         
         # Return MediaResponse with correct structure
@@ -145,11 +222,13 @@ async def create_complete_video(
             "content": f"Complete video: {request.script_text[:50]}...",
             "media_type": "video",
             "url": upload_result["url"],
-            "public_id": upload_result["public_id"],
-            "metadata": {
+            "public_id": upload_result["public_id"],            "metadata": {
                 "voice_id": request.voice_id,
                 "audio_id": audio_result.get("audio_id"),
-                "background_image_id": request.background_image_id,
+                "background_image_id": request.background_image_id,  # Keep for backward compatibility
+                "background_image_ids": background_ids,  # Multiple background support
+                "is_multi_scene": len(background_ids) > 1,
+                "scene_count": len(background_ids),
                 "subtitle_enabled": request.subtitle_enabled,
                 "subtitle_language": request.subtitle_language,
                 "subtitle_style": subtitle_style_str,
@@ -178,32 +257,54 @@ async def create_video_from_components(
         audio_media = await get_media_by_id(request.audio_file_id)
         if not audio_media:
             raise HTTPException(status_code=404, detail="Audio file not found")
+          # Get background images
+        background_paths = []
+        background_ids = []
         
-        # Get background image
-        background_media = await get_media_by_id(request.background_image_id)
-        if not background_media:
-            raise HTTPException(status_code=404, detail="Background image not found")
+        # Handle multiple background images if provided
+        if request.background_image_ids and len(request.background_image_ids) > 0:
+            background_ids = request.background_image_ids
+        elif request.background_image_id:
+            background_ids = [request.background_image_id]
+        else:
+            raise HTTPException(status_code=400, detail="No background image provided")
         
         # Download files to temp
         audio_path = os.path.join(TEMP_DIR, f"audio_{request.audio_file_id}.wav")
-        background_path = os.path.join(TEMP_DIR, f"bg_{request.background_image_id}.jpg")
         
+        # Download audio
         async with httpx.AsyncClient() as client:
-            # Download audio
             audio_response = await client.get(audio_media["url"])
             audio_response.raise_for_status()
             with open(audio_path, "wb") as f:
                 f.write(audio_response.content)
             
-            # Download background
-            bg_response = await client.get(background_media["url"])
-            bg_response.raise_for_status()
-            with open(background_path, "wb") as f:
-                f.write(bg_response.content)
+            # Download all background images
+            for i, bg_id in enumerate(background_ids):
+                background_media = await get_media_by_id(bg_id)
+                if not background_media:
+                    print(f"Warning: Background image {bg_id} not found, skipping")
+                    continue
+                    
+                background_path = os.path.join(TEMP_DIR, f"bg_{bg_id}_{i}.jpg")
+                bg_response = await client.get(background_media["url"])
+                bg_response.raise_for_status()
+                with open(background_path, "wb") as f:
+                    f.write(bg_response.content)
+                background_paths.append(background_path)
+        
+        if not background_paths:
+            raise HTTPException(status_code=404, detail="No valid background images found")
         
         # Create video
         video_path = os.path.join(TEMP_DIR, f"video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
-        video_result = create_video(background_path, audio_path, video_path)
+        
+        if len(background_paths) > 1:
+            # Multi-scene video
+            video_result = create_multi_scene_video(background_paths, audio_path, video_path)
+        else:
+            # Single scene video
+            video_result = create_video(background_paths[0], audio_path, video_path)
         
         if not video_result:
             raise HTTPException(status_code=500, detail="Failed to create video")
@@ -234,17 +335,19 @@ async def create_video_from_components(
             user_id,
             folder="videos",
             resource_type="video",
-            prompt=f"Video from components",
-            metadata={
+            prompt=f"Video from components",            metadata={
                 "audio_file_id": request.audio_file_id,
-                "background_image_id": request.background_image_id,
+                "background_image_id": request.background_image_id,  # Keep for backward compatibility
+                "background_image_ids": background_ids,  # Multiple background support
+                "is_multi_scene": len(background_ids) > 1,
+                "scene_count": len(background_ids),
                 "subtitle_enabled": request.subtitle_enabled
             }
         )
-        
-        # Clean up
-        for temp_file in [audio_path, background_path, final_video_path]:
-            if os.path.exists(temp_file):
+          # Clean up
+        cleanup_files = [audio_path, final_video_path] + background_paths
+        for temp_file in cleanup_files:
+            if temp_file and os.path.exists(temp_file):
                 os.remove(temp_file)
         
         return MediaResponse(**upload_result["media"])

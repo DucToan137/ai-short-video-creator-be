@@ -45,7 +45,9 @@ async def upload_media(file_path: str, user_id: str, folder: str = "media", reso
         )
         print(f"Uploaded {file_path} to Cloudinary")
     except Exception as e:
-        raise Exception(f"Failed to upload media to Cloudinary: {str(e)}")    # Determine media type
+        raise Exception(f"Failed to upload media to Cloudinary: {str(e)}")
+
+    # Determine media type
     media_type = MediaType.TEXT
     if resource_type == "image" or (resource_type == "auto" and upload_result.get("resource_type") == "image"):
         media_type = MediaType.IMAGE
@@ -182,7 +184,7 @@ async def delete_media(media_id: str, user_id: str) -> bool:
         print(f"Error deleting media: {e}")
         return False
 
-def create_video(image_path, audio_path, srt_path, output_path=None):
+def create_video(image_path, audio_path, output_path=None):
     """Create a video from an image and audio using FFmpeg"""
     ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
     if not output_path:
@@ -194,11 +196,6 @@ def create_video(image_path, audio_path, srt_path, output_path=None):
     print(f"  Output: {output_path}")
     
     try:
-        # Convert paths to absolute paths with forward slashes
-        image_path_abs = image_path.replace('\\', '/')
-        audio_path_abs = audio_path.replace('\\', '/')
-        srt_path_abs = srt_path.replace('\\', '/')
-
         command = [
             ffmpeg_path,
             "-loop", "1",  # Loop the image
@@ -282,19 +279,157 @@ async def download_video_media_from_cloud(media_id:str) ->BytesIO|None:
         return video
     except Exception as e:
         return None
-    
-def cleanup_temp_file(file_path: str):
-    """Clean up temporary file"""
-    try:
-        if os.path.exists(file_path) and file_path.startswith(TEMP_DIR):
-            os.remove(file_path)
-    except Exception as e:
-        print(f"Error deleting file {file_path}: {e}")
 
-def cleanup_temp_files(files: list[str]):
-    for f in files:
-        if os.path.exists(f):
-            try:
-                os.remove(f)
-            except Exception as e:
-                print(f"Error deleting temporary file {f}: {e}")
+def create_multi_scene_video(image_paths, audio_path, output_path=None):
+    """Create a multi-scene video from multiple images and audio using FFmpeg"""
+    ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+    if not output_path:
+        output_path = os.path.join(TEMP_DIR, f"multiscene_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
+    
+    print(f"Creating multi-scene video with:")
+    print(f"  Images: {[img for img in image_paths]} (count: {len(image_paths)})")
+    print(f"  Audio: {audio_path} (exists: {os.path.exists(audio_path)})")
+    print(f"  Output: {output_path}")
+    
+    if len(image_paths) == 1:
+        # If only one image, use the regular create_video function
+        return create_video(image_paths[0], audio_path, output_path)
+    
+    try:
+        # Simplified approach: Get audio duration using ffmpeg instead of ffprobe
+        print("Getting audio duration...")
+        duration_cmd = [
+            ffmpeg_path,
+            "-i", audio_path,
+            "-f", "null", "-",
+            "-hide_banner",
+            "-loglevel", "error"
+        ]
+        
+        # Try to get duration, fallback to 30s if fails
+        try:
+            result = subprocess.run(duration_cmd, capture_output=True, text=True, stderr=subprocess.STDOUT)
+            # Parse duration from ffmpeg output
+            import re
+            duration_match = re.search(r"time=(\d+):(\d+):(\d+\.\d+)", result.stderr)
+            if duration_match:
+                h, m, s = duration_match.groups()
+                audio_duration = int(h) * 3600 + int(m) * 60 + float(s)
+            else:
+                audio_duration = 30.0
+        except:
+            audio_duration = 30.0
+        
+        # Calculate duration per scene
+        scene_duration = audio_duration / len(image_paths)
+        print(f"Audio duration: {audio_duration}s, Scene duration: {scene_duration}s each")
+        
+        # Create a simpler approach: create individual scene videos then concat
+        scene_videos = []
+        for i, image_path in enumerate(image_paths):
+            if not os.path.exists(image_path):
+                print(f"Warning: Image {image_path} does not exist, skipping")
+                continue
+                
+            scene_video = os.path.join(TEMP_DIR, f"scene_{i}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
+            
+            # Create video for this scene
+            cmd = [
+                ffmpeg_path,
+                "-loop", "1",
+                "-t", str(scene_duration),
+                "-i", image_path,
+                "-c:v", "libx264",
+                "-tune", "stillimage",
+                "-pix_fmt", "yuv420p",
+                "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2",
+                "-r", "25",
+                "-y",
+                scene_video
+            ]
+            
+            print(f"Creating scene {i+1} video: {' '.join(cmd)}")
+            subprocess.run(cmd, check=True)
+            scene_videos.append(scene_video)
+        
+        if not scene_videos:
+            raise Exception("No scene videos created")
+          # Create concat file for ffmpeg
+        concat_file = os.path.join(TEMP_DIR, f"concat_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
+        with open(concat_file, 'w', encoding='utf-8') as f:
+            for video in scene_videos:
+                # Use forward slashes for ffmpeg compatibility
+                video_path = os.path.abspath(video).replace('\\', '/')
+                f.write(f"file '{video_path}'\n")
+        
+        # Concatenate all scene videos and add audio
+        final_cmd = [
+            ffmpeg_path,
+            "-f", "concat",
+            "-safe", "0",
+            "-i", concat_file,
+            "-i", audio_path,
+            "-c:v", "copy",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-shortest",
+            "-y",
+            output_path
+        ]
+        
+        print(f"Final concat command: {' '.join(final_cmd)}")
+        subprocess.run(final_cmd, check=True)
+        
+        # Cleanup temp files
+        for video in scene_videos:
+            if os.path.exists(video):
+                os.remove(video)
+        if os.path.exists(concat_file):
+            os.remove(concat_file)
+        
+        print(f"Multi-scene video created successfully: {output_path}")
+        return output_path
+        
+    except Exception as e:
+        print(f"Error creating multi-scene video: {e}")
+        # Cleanup on error
+        try:
+            for video in scene_videos:
+                if os.path.exists(video):
+                    os.remove(video)
+            if os.path.exists(concat_file):
+                os.remove(concat_file)
+        except:
+            pass
+            
+        # Fallback to single image video using first image
+        if image_paths:
+            print(f"Falling back to single image video using: {image_paths[0]}")
+            return create_video(image_paths[0], audio_path, output_path)
+        return None
+
+
+def cleanup_temp_file(file_path: str):
+    """
+    Clean up a single temporary file
+    
+    Args:
+        file_path: Path to the file to delete
+    """
+    try:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            print(f"Cleaned up temp file: {file_path}")
+    except Exception as e:
+        print(f"Error cleaning up temp file {file_path}: {e}")
+
+
+def cleanup_temp_files(file_paths: list):
+    """
+    Clean up multiple temporary files
+    
+    Args:
+        file_paths: List of file paths to delete
+    """
+    for file_path in file_paths:
+        cleanup_temp_file(file_path)
