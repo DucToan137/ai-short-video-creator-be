@@ -182,7 +182,7 @@ async def delete_media(media_id: str, user_id: str) -> bool:
         print(f"Error deleting media: {e}")
         return False
 
-def create_video(image_path, audio_path, output_path=None):
+def create_video(image_path, audio_path, srt_path, output_path=None):
     """Create a video from an image and audio using FFmpeg"""
     ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
     if not output_path:
@@ -194,6 +194,11 @@ def create_video(image_path, audio_path, output_path=None):
     print(f"  Output: {output_path}")
     
     try:
+        # Convert paths to absolute paths with forward slashes
+        image_path_abs = image_path.replace('\\', '/')
+        audio_path_abs = audio_path.replace('\\', '/')
+        srt_path_abs = srt_path.replace('\\', '/')
+
         command = [
             ffmpeg_path,
             "-loop", "1",  # Loop the image
@@ -277,3 +282,19 @@ async def download_video_media_from_cloud(media_id:str) ->BytesIO|None:
         return video
     except Exception as e:
         return None
+    
+def cleanup_temp_file(file_path: str):
+    """Clean up temporary file"""
+    try:
+        if os.path.exists(file_path) and file_path.startswith(TEMP_DIR):
+            os.remove(file_path)
+    except Exception as e:
+        print(f"Error deleting file {file_path}: {e}")
+
+def cleanup_temp_files(files: list[str]):
+    for f in files:
+        if os.path.exists(f):
+            try:
+                os.remove(f)
+            except Exception as e:
+                print(f"Error deleting temporary file {f}: {e}")
