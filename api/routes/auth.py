@@ -1,13 +1,17 @@
-from fastapi import APIRouter,HTTPException,Form,Response,Request,Depends,status
+from fastapi import APIRouter,HTTPException,Form,Response,Request,Depends,status,File,UploadFile
 from fastapi.responses import RedirectResponse
 from models import User
-from schemas import UserResponse, UserCreate,UserLogin,Token
+from schemas import UserResponse, UserCreate, UserLogin, UserUpdate, ChangePassword, Token
 from api.deps import get_current_user
 from services import create_user,authenticate_user,\
     get_google_oauth_url,handle_google_oauth_callback,\
     get_facebook_oauth_url,handle_facebook_oauth_callback
+from services.Auth.User import update_user, change_password
 from core import create_access_token,create_refresh_token,verify_token
 from config import app_config
+from config.cloudinary_config import cloudinary_config
+import cloudinary.uploader
+
 router = APIRouter(prefix="/user", tags=["Authentication"])
 ACCESS_TOKEN_EXPIRE_MINUTES = app_config.ACCESS_TOKEN_EXPIRE_MINUTES
 REFRESH_TOKEN_EXPIRE_DAYS = app_config.REFRESH_TOKEN_EXPIRE_DAYS
@@ -168,3 +172,37 @@ async def refresh_token(request:Request):
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: User = Depends(get_current_user)):
     return UserResponse(**current_user.model_dump(exclude={"password"}))
+
+@router.put("/update", response_model=UserResponse)
+async def update_user_me(
+    user_update: UserUpdate,
+    current_user: User = Depends(get_current_user)):
+    updated_user = await update_user(current_user.id, user_update)
+    if not updated_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return updated_user
+
+@router.post("/upload-avatar")
+async def upload_avatar(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        result = cloudinary.uploader.upload(
+            file.file,
+            folder="avatars",
+            public_id=f"user_{current_user.id}",
+            overwrite=True,
+            resource_type="image"
+        )
+        return {"url": result["secure_url"]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+    
+@router.post("/change-password")
+async def change_password_endpoint(
+    req: ChangePassword,
+    current_user: User = Depends(get_current_user)
+):
+    await change_password(current_user.id, req.current_password, req.new_password)
+    return {"message": "Password changed successfully"}
