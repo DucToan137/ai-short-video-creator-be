@@ -1,9 +1,10 @@
 from fastapi.security import HTTPBearer,HTTPAuthorizationCredentials
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from services import get_user_by_username
 from models import User
 from core import verify_token
 from jose import JWTError
+from typing import Optional
 security = HTTPBearer()
 
 async def get_current_user(credentials:HTTPAuthorizationCredentials =Depends(security))->User:
@@ -26,3 +27,16 @@ async def get_current_user(credentials:HTTPAuthorizationCredentials =Depends(sec
         raise credentials_exception
     return user
 
+async def get_current_user_optional(request: Request) -> Optional[User]:
+    try:
+        # Lấy token từ Authorization header
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            return None
+        
+        token = auth_header.split(" ")[1]
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+        user = await get_current_user(credentials)
+        return user
+    except Exception:
+        return None

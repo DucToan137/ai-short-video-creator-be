@@ -2,10 +2,11 @@ from fastapi import APIRouter,HTTPException,Form,Response,Request,Depends,status
 from fastapi.responses import RedirectResponse
 from models import User
 from schemas import UserResponse, UserCreate, UserLogin, UserUpdate, ChangePassword, Token
-from api.deps import get_current_user
+from api.deps import get_current_user, get_current_user_optional
+from typing import Optional
 from services import create_user,authenticate_user,\
-    get_google_oauth_url,handle_google_oauth_callback,\
-    get_facebook_oauth_url,handle_facebook_oauth_callback
+    get_google_oauth_url, get_facebook_oauth_url,\
+    handle_facebook_oauth_callback,handle_google_callback
 from services.Auth.User import update_user, change_password
 from core import create_access_token,create_refresh_token,verify_token
 from config import app_config
@@ -71,27 +72,51 @@ async def google_auth():
             detail=f"An error occurred while getting Google OAuth URL: {str(e)}"
         )
 @router.get("/google/callback")
-async def google_callback(code: str,response:Response):
-    try: 
-        user =await handle_google_oauth_callback(code)
-        access_token =create_access_token(data={"sub":user.username,"id":user.id})
-        refresh_token =create_refresh_token(data={"sub":user.username,"id":user.id})
+async def google_callback(
+    code: str,
+    response: Response,
+    state: str = None,
+    request: Request = None
+):
+    try:
+        import urllib.parse
+        current_user = None
+        if state and "access_token=" in state:
+            state_decoded = urllib.parse.unquote(state)
+            params = dict(x.split("=") for x in state_decoded.split("&") if "=" in x)
+            access_token = params.get("access_token")
+            
+            if access_token:
+                from core import verify_token
+                from services import get_user_by_id
+                try:
+                    payload = verify_token(access_token, token_type="access")
+                    user_id = payload.get("id")
+                    current_user = await get_user_by_id(user_id)
+                except Exception as e:
+                    current_user = None
+        
+        user = await handle_google_callback(code, current_user)
+        
+        access_token = create_access_token(data={"sub": user.username, "id": user.id})
+        refresh_token = create_refresh_token(data={"sub": user.username, "id": user.id})
         response.set_cookie(
-            key= "refresh_token",
+            key="refresh_token",
             value=refresh_token,
-            max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,  # days to seconds
+            max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
             httponly=True,
-            samesite="Strict",
+            samesite="Lax",
             secure=False
-        )
-        frontend_url = f"{FRONTEND_URL}#access_token={access_token}"
-        return RedirectResponse(
-            url=frontend_url
-        )
+        )        
+        if state and ("link" in state or "linked" in state):
+            frontend_url = f"{FRONTEND_URL}/auth/profile?linked=google"
+        else:
+            frontend_url = f"{FRONTEND_URL}#access_token={access_token}"
+        return RedirectResponse(url=frontend_url)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred while creating the user: {str(e)}"
+            detail=f"An error occurred while processing Google callback: {str(e)}"
         )
 @router.get("/facebook/auth")
 async def facebook_auth():
@@ -206,3 +231,11 @@ async def change_password_endpoint(
 ):
     await change_password(current_user.id, req.current_password, req.new_password)
     return {"message": "Password changed successfully"}
+
+@router.get("/google/link/auth")
+async def google_link_auth(current_user: User = Depends(get_current_user)):
+    try:
+        auth_url = await get_google_oauth_url("link")
+        return {"auth_url": auth_url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

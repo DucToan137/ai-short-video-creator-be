@@ -15,6 +15,16 @@ async def get_user_by_username(username: str)-> User | None:
         print("Error fetching user by username")
         return None
 
+async def get_user_by_id(user_id: str) -> User | None:
+    try:
+        user = await collection.find_one({"_id": ObjectId(user_id)})
+        if user:
+            return User(**user)
+        return None
+    except Exception as e:
+        print("Error fetching user by id")
+        return None
+
 async def get_user_by_email(email: str)-> User | None:
     try:
         user = await collection.find_one({"email": email})

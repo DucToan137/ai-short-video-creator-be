@@ -16,6 +16,7 @@ from core import hash_password
 import json
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
+from typing import Optional
 GOOGLE_CLIENT_ID = app_config.GOOGLE_CLIENT_ID
 GOOGLE_CLIENT_SECRET = app_config.GOOGLE_CLIENT_SECRET
 GOOGLE_REDIRECT_URI = app_config.GOOGLE_REDIRECT_URI
@@ -29,7 +30,7 @@ GOOGLE_SCOPES =[
 collection = user_collection()
 
 
-async def get_google_oauth_url()->str:
+async def get_google_oauth_url(mode: str = "login") -> str:
     flow = Flow.from_client_config(
         {
             "web":{
@@ -47,6 +48,7 @@ async def get_google_oauth_url()->str:
         access_type='offline',
         include_granted_scopes='true',
         prompt='consent',
+        state=mode
     )
     return authorization_url
 
@@ -152,3 +154,90 @@ async def check_and_refresh_google_credentials(user:User) -> Credentials:
                     detail=f"Server error: {str(e)}"
                 )
         return credentials
+
+async def handle_google_callback(code: str, current_user: Optional[User] = None) -> User:
+    flow = Flow.from_client_config(
+        {
+            "web":{
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [GOOGLE_REDIRECT_URI],
+            }
+        },
+        scopes=GOOGLE_SCOPES
+    )
+    flow.redirect_uri = GOOGLE_REDIRECT_URI
+    flow.fetch_token(code=code)
+    credentials = flow.credentials
+    idinfo = id_token.verify_oauth2_token(
+        credentials.id_token, requests.Request(), GOOGLE_CLIENT_ID
+    )
+    email = idinfo.get("email")
+    
+    if not email:
+        raise HTTPException(status_code=400, detail="Email not returned by Google")
+
+    if current_user:
+        existing_user = await get_user_by_email(email)
+        if existing_user and existing_user.id != current_user.id:
+            raise HTTPException(
+                status_code=400,
+                detail="This Google account is already linked to another user."
+            )
+        
+        credentials_data = json.loads(credentials.to_json())
+        social_credentials = current_user.social_credentials or {}
+        social_credentials["google"] = {
+            "credentials": credentials_data,
+            "email": email,
+            "avatar": idinfo.get("picture"),
+        }
+        
+        from bson import ObjectId
+        user_id = ObjectId(current_user.id) if isinstance(current_user.id, str) else current_user.id
+        
+        update_result = await collection.update_one(
+            {"_id": user_id},
+            {"$set": {"social_credentials": social_credentials}}
+        )
+        
+        current_user.social_credentials = social_credentials
+        return current_user
+    else:
+        existing_user = await get_user_by_email(email)
+        if existing_user:
+            credentials_data = json.loads(credentials.to_json())
+            social_credentials = existing_user.social_credentials or {}
+            social_credentials["google"] = {
+                "credentials": credentials_data,
+                "email": email,
+                "avatar": idinfo.get("picture"),
+            }
+            await collection.update_one(
+                {"_id": existing_user.id},
+                {"$set": {"social_credentials": social_credentials}}
+            )
+            existing_user.social_credentials = social_credentials
+            return existing_user
+        else:
+            username = await generate_username(email)
+            new_user = {
+                "username": username,
+                "email": email,
+                "fullName": idinfo.get("name"),
+                "avatar": idinfo.get("picture"),
+                "password": hash_password(generate_password()),
+                "social_credentials": {
+                    "google": {
+                        "credentials": json.loads(credentials.to_json()),
+                        "email": email,
+                        "avatar": idinfo.get("picture"),
+                    }
+                }
+            }
+            result = await collection.insert_one(new_user)
+            created_user = await collection.find_one({"_id": result.inserted_id})
+            user = User(**created_user)
+            return user

@@ -13,6 +13,7 @@ from services.Media.text_to_speech import generate_speech_async
 from services.subtitle_service import generate_srt_content
 from config import TEMP_DIR
 from schemas.media import MediaResponse, CompleteVideoRequest, VideoFromComponentsRequest
+from models.user import User
 
 router = APIRouter(prefix="/api/video", tags=["video"])
 
@@ -205,7 +206,7 @@ async def create_video_from_components(
 @router.get("/download/{video_id}")
 async def download_video(
     video_id: str,
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     Download video file
@@ -217,7 +218,7 @@ async def download_video(
             raise HTTPException(status_code=404, detail="Video not found")
         
         # Check if user owns the video
-        if str(video_media["user_id"]) != str(current_user["id"]):
+        if str(video_media["user_id"]) != str(current_user.id):
             raise HTTPException(status_code=403, detail="Access denied")        
         # Download video to temp file
         temp_video_path = os.path.join(TEMP_DIR, f"download_{video_id}.mp4")
