@@ -1,12 +1,15 @@
 from pydantic import BaseModel,EmailStr,Field,field_validator,ConfigDict
-from typing import Optional,Any
+from typing import Optional,Any,Literal
 from bson import ObjectId
 import re
 from datetime import datetime
+
 class UserBase(BaseModel):
     username:str = Field(...,min_length=3, max_length=50)
     email:EmailStr | None = None
     fullName:str | None = None
+    type: Literal["regular", "google", "facebook"] = Field(default="regular")
+    
     @field_validator('username')
     def username_alphanumeric(cls, v):
         if not re.match("^[a-zA-Z0-9_]+$", v):
@@ -38,11 +41,20 @@ class UserResponse(UserBase):
     email: str|None = None
     fullName: str|None = None
     avatar: str|None = None
+    type: Literal["regular", "google", "facebook"] = Field(default="regular")
     created_at: datetime
     social_credentials: Optional[dict] = Field(default_factory=dict)
 
 class ChangePassword(BaseModel):
     current_password: str
+    new_password: str = Field(..., min_length=6, max_length=128)
+    @field_validator('new_password')
+    def validate_new_password(cls, v):
+        if len(v) < 6:
+            raise ValueError('Password must be at least 6 characters long')
+        return v
+
+class SetPasswordGoogle(BaseModel):
     new_password: str = Field(..., min_length=6, max_length=128)
     @field_validator('new_password')
     def validate_new_password(cls, v):

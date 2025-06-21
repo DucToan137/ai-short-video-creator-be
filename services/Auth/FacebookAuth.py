@@ -101,9 +101,16 @@ async def process_facebook_user(user:Dict[str,Any],access_token:str)->User:
     if existing_user:
         social_credentials = existing_user.social_credentials or {}
         social_credentials["facebook"] = facebook_platform_data
+        
+        # Always set type to "facebook" for users who log in via Facebook
+        update_data = {
+            "social_credentials": social_credentials,
+            "type": "facebook"  # Override type to "facebook" regardless of current value
+        }
+        
         await collection.update_one(
             {"_id": existing_user.id},
-            {"$set": {"social_credentials": social_credentials}}
+            {"$set": update_data}
         )
         existing_user.social_credentials = social_credentials
         return existing_user
@@ -115,6 +122,7 @@ async def process_facebook_user(user:Dict[str,Any],access_token:str)->User:
             "email": email,
             "fullName": name,
             "avatar": avatar,
+            "type": "facebook",  # Set type for Facebook OAuth users
             "password": hash_password(password),  
             "social_credentials": {
                 "facebook": facebook_platform_data

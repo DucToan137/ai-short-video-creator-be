@@ -78,13 +78,16 @@ async def google_callback(
     state: str = None,
     request: Request = None
 ):
+    is_linking = False  # Initialize outside try block
     try:
         import urllib.parse
         current_user = None
+        
         if state and "access_token=" in state:
             state_decoded = urllib.parse.unquote(state)
             params = dict(x.split("=") for x in state_decoded.split("&") if "=" in x)
             access_token = params.get("access_token")
+            is_linking = True
             
             if access_token:
                 from core import verify_token
@@ -108,16 +111,32 @@ async def google_callback(
             samesite="Lax",
             secure=False
         )        
-        if state and ("link" in state or "linked" in state):
+        if is_linking:
             frontend_url = f"{FRONTEND_URL}/auth/profile?linked=google"
         else:
             frontend_url = f"{FRONTEND_URL}#access_token={access_token}"
         return RedirectResponse(url=frontend_url)
+    except HTTPException as e:
+        # Handle specific HTTPExceptions (like Google account already linked)
+        if is_linking:
+            # For linking errors, redirect to profile with error parameter
+            import urllib.parse
+            error_message = urllib.parse.quote(e.detail)
+            frontend_url = f"{FRONTEND_URL}/auth/profile?link_error={error_message}"
+            return RedirectResponse(url=frontend_url)
+        else:
+            # For login errors, re-raise the exception
+            raise e
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred while processing Google callback: {str(e)}"
-        )
+        if is_linking:
+            # For linking errors, redirect to profile with generic error
+            frontend_url = f"{FRONTEND_URL}/auth/profile?link_error=An error occurred while linking your Google account"
+            return RedirectResponse(url=frontend_url)
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"An error occurred while processing Google callback: {str(e)}"
+            )
 @router.get("/facebook/auth")
 async def facebook_auth():
     try:
@@ -226,8 +245,7 @@ async def upload_avatar(
     
 @router.post("/change-password")
 async def change_password_endpoint(
-    req: ChangePassword,
-    current_user: User = Depends(get_current_user)
+    req: ChangePassword,    current_user: User = Depends(get_current_user)
 ):
     await change_password(current_user.id, req.current_password, req.new_password)
     return {"message": "Password changed successfully"}

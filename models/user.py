@@ -1,10 +1,11 @@
 from pydantic import BaseModel, Field,EmailStr,ConfigDict
 from datetime import datetime
 from bson import ObjectId
-from typing import Optional,Dict,Any
+from typing import Optional,Dict,Any,Literal
 from pydantic.functional_validators import BeforeValidator
 from typing_extensions import Annotated
 PyObjectId = Annotated[str,BeforeValidator(str)]
+
 class User(BaseModel):
     id: Optional[PyObjectId] = Field(default=None, alias="_id")
     username: str =Field(...,min_length=3, max_length=50)
@@ -12,6 +13,7 @@ class User(BaseModel):
     email: EmailStr| None = None
     fullName:str|None = None
     avatar:str | None = None
+    type: Literal["regular", "google", "facebook"] = Field(default="regular")  # User account type
     created_at: datetime = Field(default_factory=datetime.now)
     social_credentials:Optional[Dict[str, Any]] = None
     model_config =ConfigDict(

@@ -17,6 +17,8 @@ import json
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 from typing import Optional
+from bson import ObjectId  # Add ObjectId import
+
 GOOGLE_CLIENT_ID = app_config.GOOGLE_CLIENT_ID
 GOOGLE_CLIENT_SECRET = app_config.GOOGLE_CLIENT_SECRET
 GOOGLE_REDIRECT_URI = app_config.GOOGLE_REDIRECT_URI
@@ -99,11 +101,19 @@ async def process_google_user(idinfo:Dict[str,Any],credentials) ->User:
     existing_user = await get_user_by_email(email)
     if existing_user:
         social_credentials = existing_user.social_credentials or {}
-        social_credentials['google'] = google_platform_data
-        await collection.update_one(
-            {"_id": existing_user.id},
-            {"$set": {"social_credentials": social_credentials}}
+        social_credentials['google'] = google_platform_data    
+        update_data = {
+            "social_credentials": social_credentials,
+            "type": "google" 
+        }
+        
+        user_object_id = ObjectId(existing_user.id) if isinstance(existing_user.id, str) else existing_user.id
+        
+        update_result = await collection.update_one(
+            {"_id": user_object_id},
+            {"$set": update_data}
         )
+        
         existing_user.social_credentials = social_credentials
         return existing_user
     else:
@@ -113,11 +123,11 @@ async def process_google_user(idinfo:Dict[str,Any],credentials) ->User:
             "email": email,
             "fullName": name,
             "avatar": avatar,
+            "type": "google",
             "password": hash_password(generate_password()),
             "social_credentials": {
                 "google": google_platform_data
-            }
-        }
+            }        }
         result = await collection.insert_one(new_user)
         created_user = await collection.find_one({"_id": result.inserted_id})
         if created_user:
@@ -165,8 +175,7 @@ async def handle_google_callback(code: str, current_user: Optional[User] = None)
                 "token_uri": "https://oauth2.googleapis.com/token",
                 "redirect_uris": [GOOGLE_REDIRECT_URI],
             }
-        },
-        scopes=GOOGLE_SCOPES
+        },        scopes=GOOGLE_SCOPES
     )
     flow.redirect_uri = GOOGLE_REDIRECT_URI
     flow.fetch_token(code=code)
@@ -179,12 +188,24 @@ async def handle_google_callback(code: str, current_user: Optional[User] = None)
     if not email:
         raise HTTPException(status_code=400, detail="Email not returned by Google")
 
-    if current_user:
+    if current_user:        
+        # Check if this Google email already exists in the system
         existing_user = await get_user_by_email(email)
         if existing_user and existing_user.id != current_user.id:
             raise HTTPException(
                 status_code=400,
-                detail="This Google account is already linked to another user."
+                detail="Google account is already linked to another user."
+            )
+        
+        # Check if this Google account is already linked via social_credentials
+        existing_google_user = await collection.find_one({
+            "social_credentials.google.email": email,
+            "_id": {"$ne": ObjectId(current_user.id) if isinstance(current_user.id, str) else current_user.id}
+        })
+        if existing_google_user:
+            raise HTTPException(
+                status_code=400,
+                detail="Google account is already linked to another user."
             )
         
         credentials_data = json.loads(credentials.to_json())
@@ -195,7 +216,6 @@ async def handle_google_callback(code: str, current_user: Optional[User] = None)
             "avatar": idinfo.get("picture"),
         }
         
-        from bson import ObjectId
         user_id = ObjectId(current_user.id) if isinstance(current_user.id, str) else current_user.id
         
         update_result = await collection.update_one(
@@ -215,9 +235,17 @@ async def handle_google_callback(code: str, current_user: Optional[User] = None)
                 "email": email,
                 "avatar": idinfo.get("picture"),
             }
+            
+            update_data = {
+                "social_credentials": social_credentials,
+                "type": "google"  # Set type to "google" only for login
+            }
+            
+            user_object_id = ObjectId(existing_user.id) if isinstance(existing_user.id, str) else existing_user.id
+            
             await collection.update_one(
-                {"_id": existing_user.id},
-                {"$set": {"social_credentials": social_credentials}}
+                {"_id": user_object_id},
+                {"$set": update_data}
             )
             existing_user.social_credentials = social_credentials
             return existing_user
@@ -228,6 +256,7 @@ async def handle_google_callback(code: str, current_user: Optional[User] = None)
                 "email": email,
                 "fullName": idinfo.get("name"),
                 "avatar": idinfo.get("picture"),
+                "type": "google", 
                 "password": hash_password(generate_password()),
                 "social_credentials": {
                     "google": {
