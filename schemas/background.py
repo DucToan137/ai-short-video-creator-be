@@ -31,3 +31,16 @@ class BackgroundGenerationResponse(BaseModel):
     prompt: str = Field(..., description="Prompt used for generation")
     style: str = Field(..., description="Style used")
     resolution: str = Field(..., description="Image resolution")
+
+class MultipleBackgroundGenerationRequest(BaseModel):
+    """Schema for generating multiple backgrounds from script"""
+    script_text: str = Field(..., min_length=1, description="Script text to generate backgrounds from")
+    style: str = Field(..., description="Style for background generation")
+    count: int = Field(default=3, ge=1, le=10, description="Number of backgrounds to generate")
+    image_prompts: Optional[List[str]] = Field(default=None, description="Pre-generated image prompts from cache")
+
+class MultipleBackgroundGenerationResponse(BaseModel):
+    """Schema for multiple background generation response"""
+    backgrounds: List[BackgroundGenerationResponse] = Field(..., description="List of generated backgrounds")
+    style: str = Field(..., description="Style used")
+    total_generated: int = Field(..., description="Total number of backgrounds generated")
