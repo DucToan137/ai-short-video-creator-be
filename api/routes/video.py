@@ -14,6 +14,7 @@ from services.Media.text_to_speech import generate_speech_async
 from services.subtitle_service import generate_srt_content
 from config import TEMP_DIR
 from schemas.media import MediaResponse, CompleteVideoRequest, VideoFromComponentsRequest
+from models.user import User
 
 router = APIRouter(prefix="/api/video", tags=["video"])
 

@@ -24,6 +24,7 @@ class MediaType(str, Enum):
 class MediaModel(BaseModel):
     id: Optional[PyObjectId] = Field(default=None, alias="_id")
     user_id: PyObjectId  # Link to user
+    title: str
     content: str
     media_type: MediaType
     url: str  # Cloudinary URL
