@@ -58,6 +58,7 @@ async def upload_media(file_path: str, user_id: str, folder: str = "media", reso
       # Create media document
     media_doc = MediaModel(
         user_id=user_id,
+        title=upload_result.get("original_filename", "Untitled"),
         content=prompt,
         media_type=media_type,
         url=upload_result["secure_url"],

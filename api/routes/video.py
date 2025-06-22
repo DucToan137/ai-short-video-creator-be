@@ -6,7 +6,7 @@ import tempfile
 from datetime import datetime
 import asyncio
 import httpx
-
+from services.voice_service import get_voice_by_id
 from api.deps import get_current_user
 from models.user import User
 from services.Media.media_utils import create_video, create_multi_scene_video, add_subtitles, upload_media, get_media_by_id
@@ -59,17 +59,27 @@ async def create_complete_video(
     #                 "audio_id": "fallback_audio"
     #             }
     #         else:
-    #             print(f"❌ Fallback audio file not found: {fallback_audio_path}")
-    #             raise HTTPException(status_code=500, detail="Failed to generate audio and no fallback available")
+    #             print(f"❌ Fallback audio file not found: {fallback_audio_path}")    #             raise HTTPException(status_code=500, detail="Failed to generate audio and no fallback available")
+    
     try:
-        user_id = str(current_user.id)        # Step 1: Generate audio from script
+        user_id = str(current_user.id)
+        # Step 1: Generate audio from script
         print("Generating audio from script...")
         audio_path = None
         fallback_audio_path = os.path.join(TEMP_DIR, "fallback_audio.wav")
         fallback_audio_url = "https://res.cloudinary.com/dsozekr7k/video/upload/v1750415589/audio/pymxnd8dbtlb9rsqwmxe.wav"
-
+        
+        # Get voice configuration and convert to actual voice name
+        voice_data = get_voice_by_id(request.voice_id)
+        if not voice_data:
+            raise HTTPException(status_code=400, detail=f"Voice {request.voice_id} not found")
+            
+        # Extract the actual voice name for TTS
+        actual_voice_name = voice_data.get("name", "Kore")  # Use voice name, fallback to Kore
+        print(f"🎤 Using voice: {actual_voice_name} (mapped from {request.voice_id})")
+        
         try:
-            audio_result = await generate_speech_async(request.script_text, request.voice_id, user_id)            
+            audio_result = await generate_speech_async(request.script_text, actual_voice_name, user_id)
             if audio_result and audio_result.get("audio_url"):
                 # Download audio from Cloudinary to temp file for video creation
                 audio_path = os.path.join(TEMP_DIR, f"audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav")
@@ -96,9 +106,7 @@ async def create_complete_video(
                     print(f"✅ Fallback audio downloaded: {fallback_audio_path}")
                 except Exception as download_err:
                     print(f"❌ Failed to download fallback audio: {download_err}")
-                    raise HTTPException(status_code=500, detail="Failed to generate audio and fallback download failed.")
-
-            # Use fallback audio file
+                    raise HTTPException(status_code=500, detail="Failed to generate audio and fallback download failed.")            # Use fallback audio file
             audio_path = fallback_audio_path
             print(f"🔄 Using fallback audio file: {fallback_audio_path}")
             audio_result = {
@@ -107,10 +115,6 @@ async def create_complete_video(
                 "audio_id": "fallback_audio"
             }
 
-        except Exception as final_err:
-            print(f"❌ Unexpected failure: {final_err}")
-            raise HTTPException(status_code=500, detail="Unexpected failure in audio processing.")
-    
         if not audio_path or not os.path.exists(audio_path):
             raise HTTPException(status_code=500, detail="No audio file available for video creation")
           # Step 2: Get background images
@@ -236,8 +240,7 @@ async def create_complete_video(
                 "script_text": request.script_text[:200]
             },
             "created_at": datetime.now(),
-            "updated_at": datetime.now()
-        }
+            "updated_at": datetime.now()        }
         
     except Exception as e:
         print(f"Error creating complete video: {e}")
