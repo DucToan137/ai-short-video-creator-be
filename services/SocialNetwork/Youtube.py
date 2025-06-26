@@ -77,7 +77,6 @@ async def get_youtube_video_stats(user:User,video_id:str)->GoogleVideoStatsRespo
             platform='google',
             title=snippet.get('title', ''),
             description=snippet.get('description', ''),
-            privacy_status=snippet.get('privacyStatus', 'private'),
             platform_url=f'https://www.youtube.com/watch?v={video_id}',
             view_count=int(stats.get('viewCount', 0)),
             like_count=int(stats.get('likeCount', 0)),

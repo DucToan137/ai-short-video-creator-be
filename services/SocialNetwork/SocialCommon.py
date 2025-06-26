@@ -4,7 +4,7 @@ from schemas import VideoUpLoadRequest,SocialPlatform
 from services.SocialNetwork import upload_video_to_youtube,get_youtube_video_stats
 from .Youtube import upload_video_to_youtube, get_youtube_video_stats
 from .Facebook import upload_video_to_facebook, get_facebook_video_stats
-from .TikTok import upload_video_to_tiktok
+from .TikTok import upload_video_to_tiktok,get_list_of_tiktok_videos,get_tiktok_video_stats
 async def upload_video(user:User,upload_request:VideoUpLoadRequest):
     if upload_request.platform == SocialPlatform.GOOGLE:
         if not user.social_credentials or 'google' not in user.social_credentials:
@@ -33,5 +33,22 @@ async def get_video_stats(user:User,video_id:str,platform:SocialPlatform):
         return await get_youtube_video_stats(user, video_id)
     elif platform==SocialPlatform.FACEBOOK:
         return await get_facebook_video_stats(user, video_id)
+    elif platform==SocialPlatform.TIKTOK:
+        return await get_tiktok_video_stats(user, video_id)
+
+async def get_more_info_social_networks(user:User,platform:SocialPlatform):
+    if platform ==SocialPlatform.TIKTOK:
+        if not user.social_credentials or 'tiktok' not in user.social_credentials:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Tiktok credentials are not available for the user."
+            )
+        return await get_list_of_tiktok_videos(user)
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Platform {platform} is not supported for fetching more info."
+        )
+        
     
         

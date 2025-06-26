@@ -19,7 +19,6 @@ class VideoStatsResponse(BaseModel):
     platform:SocialPlatform
     title: str
     description: Optional[str] = ""
-    privacy_status: str
     platform_url:str
     created_at: datetime
 class GoogleVideoStatsResponse(VideoStatsResponse):
@@ -33,10 +32,9 @@ class FacebookVideoStatsResponse(VideoStatsResponse):
     share_count: Optional[int] = 0
     comment_count: Optional[int] = 0
     
-# class VideoStatsResponse(BaseModel):
-#     platform: SocialPlatform
-#     platform_video_id: str
-#     view_count: Optional[int] = 0
-#     like_count: Optional[int] = 0
-#     comment_count: Optional[int] = 0
-#     last_updated: datetime
+class TikTokVideoStatsResponse(VideoStatsResponse):
+    view_count: Optional[int] = 0
+    like_count: Optional[int] = 0
+    share_count: Optional[int] = 0
+    comment_count: Optional[int] = 0
+    cover_image_url: Optional[str] = ""

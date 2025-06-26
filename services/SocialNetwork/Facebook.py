@@ -88,7 +88,6 @@ async def get_facebook_video_stats(user: User, video_id: str) -> FacebookVideoSt
             platform=SocialPlatform.FACEBOOK,
             title=video_info.get("title", ""),
             description=video_info.get("description", ""),
-            privacy_status=video_info.get("privacy_status", "UNKNOWN"),
             platform_url=video_info.get("permalink_url",f"https://www.facebook.com/{video_id}"),
             created_at=video_info.get("created_at"),
             view_count=video_info.get("views", 0),
@@ -121,7 +120,6 @@ async def get_video_basic_info(video_id: str, access_token: str) -> dict:
             "title": data.get("title", ""),
             "description": data.get("description", ""),
             "created_at": data.get("created_time"),
-            "privacy_status": data.get("privacy", {}).get("value", "SELF"),
             "platform_url": data.get("permalink_url", ""),
             "post_id": data.get("post_id", ""),
             "views": data.get("views", 0)
