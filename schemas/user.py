@@ -39,7 +39,7 @@ class UserResponse(UserBase):
     fullName: str|None = None
     avatar: str|None = None
     created_at: datetime
-    social_credentials: Optional[dict] = Field(default_factory=dict)
+    # social_credentials: Optional[dict] = Field(default_factory=dict)
 
 class ChangePassword(BaseModel):
     current_password: str

@@ -25,13 +25,6 @@ async def upload_video_to_facebook(user: User,page_id:str, upload_request: Video
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Page access token not found"
             )
-        # # media = await get_media_by_id(upload_request.media_id)
-        # if not media:
-        #     raise HTTPException(
-        #         status_code=status.HTTP_404_NOT_FOUND,
-        #         detail="Media not found"
-        #     )
-        # media_url = media.url
         upload_url=f"https://graph.facebook.com/v23.0/{page_id}/videos"
         upload_data ={
             "title": upload_request.title,
@@ -40,15 +33,6 @@ async def upload_video_to_facebook(user: User,page_id:str, upload_request: Video
             "access_token": page_access_token,
             "privacy": "{\"value\":\"EVERYONE\"}"
         }
-        # privacy_mapping = {
-        #     "public": {"value": "EVERYONE"},
-        #     "private": {"value": "SELF"},
-        #     "friends": {"value": "ALL_FRIENDS"}
-        # }
-        # privacy_status = upload_request.privacy_status.lower()
-        # if privacy_status in privacy_mapping:
-        #     upload_data["privacy"] = json.dumps(privacy_mapping[privacy_status])
-
         if upload_request.tags:
             upload_data["tags"] = ",".join(upload_request.tags)
         
@@ -104,7 +88,6 @@ async def get_facebook_video_stats(user: User, video_id: str) -> FacebookVideoSt
             platform=SocialPlatform.FACEBOOK,
             title=video_info.get("title", ""),
             description=video_info.get("description", ""),
-            privacy_status=video_info.get("privacy_status", "UNKNOWN"),
             platform_url=video_info.get("permalink_url",f"https://www.facebook.com/{video_id}"),
             created_at=video_info.get("created_at"),
             view_count=video_info.get("views", 0),
@@ -137,7 +120,6 @@ async def get_video_basic_info(video_id: str, access_token: str) -> dict:
             "title": data.get("title", ""),
             "description": data.get("description", ""),
             "created_at": data.get("created_time"),
-            "privacy_status": data.get("privacy", {}).get("value", "SELF"),
             "platform_url": data.get("permalink_url", ""),
             "post_id": data.get("post_id", ""),
             "views": data.get("views", 0)

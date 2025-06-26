@@ -111,3 +111,9 @@ async def change_password(user_id: str, current_password: str, new_password: str
     new_hashed = hash_password(new_password)
     await collection.update_one({"_id": user_id}, {"$set": {"password": new_hashed}})
     return True
+
+async def get_user_by_tiktok_open_id(open_id: str) -> User | None:
+    user =await collection.find_one({"social_credentials.tiktok.open_id": open_id})
+    if user:
+            return User(**user)
+    return None
