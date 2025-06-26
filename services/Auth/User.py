@@ -29,10 +29,14 @@ async def get_user_by_email(email: str)-> User | None:
     try:
         user = await collection.find_one({"email": email})
         if user:
-            return User(**user)
+            try:
+                user_obj = User(**user)
+                return user_obj
+            except Exception as e:
+                return None
         return None
     except Exception as e:
-        print("Error fetching user by email")
+        print("Error fetching user by email",e)
         return None
 async def create_user(user:UserCreate) ->User:
     exitsting_user = await get_user_by_username(user.username)

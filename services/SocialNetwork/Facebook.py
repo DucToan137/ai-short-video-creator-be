@@ -1,11 +1,12 @@
 from schemas import VideoUpLoadRequest,FacebookVideoStatsResponse
-from models import User
-from services import check_facebook_credentials, get_media_by_id
+from models import User,SocialVideoCreate
+from services import check_facebook_credentials
+from .SocialUtils import add_social_video
 from fastapi import HTTPException, status
 from config import user_collection
 from schemas import SocialPlatform
 import requests
-from typing import Any,Dict,List
+from typing import Any
 from bson import ObjectId
 collection = user_collection()
 async def upload_video_to_facebook(user: User,page_id:str, upload_request: VideoUpLoadRequest) -> str:
@@ -41,7 +42,6 @@ async def upload_video_to_facebook(user: User,page_id:str, upload_request: Video
         
         response = requests.post(upload_url, data=upload_data)
         result = response.json()
-        print(f"Facebook upload response: {result}")  # Debugging line
         if "error" in result:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -53,6 +53,12 @@ async def upload_video_to_facebook(user: User,page_id:str, upload_request: Video
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Video upload failed, no video ID returned"
             )
+        social_video_data = SocialVideoCreate(
+            user_id=str(user.id),
+            platform=SocialPlatform.FACEBOOK,
+            video_url=f"https://www.facebook.com/{video_id}"
+        )
+        await add_social_video(social_video_data)
         return f"https://www.facebook.com/{video_id}"
     except HTTPException as e:
         raise  HTTPException(
@@ -66,7 +72,7 @@ async def get_page_by_pageid(user:User,page_id:str):
         
 async def get_facebook_video_stats(user: User, video_id: str) -> FacebookVideoStatsResponse:
     try:
-        page_id=""  # Replace with actual page ID or fetch from user input
+        page_id="697172490141410"  # Replace with actual page ID or fetch from user input
         access_token = await check_facebook_credentials(user)
        
         video_info = await get_video_basic_info(video_id, access_token)
