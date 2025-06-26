@@ -11,6 +11,7 @@ from api.routes.voice import router as voice_router
 from api.routes.background import router as background_router
 from api.routes.subtitle import router as subtitle_router
 from api.routes.video import router as video_router
+from api.routes.facebook_pages import router as facebook_pages_router
 import uvicorn
 import time
 import logging
@@ -52,6 +53,7 @@ api.include_router(voice_router)
 api.include_router(background_router)
 api.include_router(subtitle_router)
 api.include_router(video_router)
+api.include_router(facebook_pages_router)
 
 # Request logging middleware
 @api.middleware("http")
