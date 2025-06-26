@@ -25,13 +25,6 @@ async def upload_video_to_facebook(user: User,page_id:str, upload_request: Video
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Page access token not found"
             )
-        # # media = await get_media_by_id(upload_request.media_id)
-        # if not media:
-        #     raise HTTPException(
-        #         status_code=status.HTTP_404_NOT_FOUND,
-        #         detail="Media not found"
-        #     )
-        # media_url = media.url
         upload_url=f"https://graph.facebook.com/v23.0/{page_id}/videos"
         upload_data ={
             "title": upload_request.title,
@@ -40,15 +33,6 @@ async def upload_video_to_facebook(user: User,page_id:str, upload_request: Video
             "access_token": page_access_token,
             "privacy": "{\"value\":\"EVERYONE\"}"
         }
-        # privacy_mapping = {
-        #     "public": {"value": "EVERYONE"},
-        #     "private": {"value": "SELF"},
-        #     "friends": {"value": "ALL_FRIENDS"}
-        # }
-        # privacy_status = upload_request.privacy_status.lower()
-        # if privacy_status in privacy_mapping:
-        #     upload_data["privacy"] = json.dumps(privacy_mapping[privacy_status])
-
         if upload_request.tags:
             upload_data["tags"] = ",".join(upload_request.tags)
         

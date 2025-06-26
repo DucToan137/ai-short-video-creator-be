@@ -15,7 +15,9 @@ TIKTOK_CLIENT_SECRET = app_config.TIKTOK_CLIENT_SECRET
 TIKTOK_REDIRECT_URI = app_config.TIKTOK_REDIRECT_URI
 TIKTOK_SCOPES = [
     "user.info.basic",
-    "video.list"
+    "video.list",
+    "video.upload",
+    "video.publish",
 ]
 collection = user_collection()
 _code_verifiers = {}
@@ -31,7 +33,6 @@ def generate_code_challenge(verifier: str) -> str:
 
 def get_tiktok_auth_url():
     code_verifier = generate_code_verifier()
-    print(f"Code verifier: {code_verifier}")
     code_challenge = generate_code_challenge(code_verifier)
     state = f"tiktok_auth_{secrets.token_urlsafe(16)}"
     _code_verifiers[state] = code_verifier
@@ -63,13 +64,11 @@ async def handle_tiktok_oauth_callback(code: str,state:str =None) -> User:
             code_verifier = _code_verifiers.pop(state)
         if code_verifier:
             token_data["code_verifier"] = code_verifier
-        print(f"Token data: {token_data}")
         headers = {
             "Content-Type": "application/x-www-form-urlencoded"
         }
         response = requests.post(token_url, data=token_data,headers=headers)
         result = response.json()
-        print(f"Token response: {result}")
         if "error" in result:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -100,9 +99,9 @@ async def get_tiktok_user_info(access_token: str) -> Dict[str, Any]:
         "fields": "open_id,display_name,avatar_url"
     }
 
+    
     async with httpx.AsyncClient() as client:
-        response = await client.get(url, headers=headers,params=params)
-
+        response = await client.get(url, headers=headers, params=params)
     if response.status_code != 200:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -232,7 +231,13 @@ async def refresh_tiktok_token(refresh_token: str) -> Dict[str, Any]:
         headers = {
         "Content-Type": "application/x-www-form-urlencoded"
         }
-        response = requests.post(url, data=data, headers=headers)
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, data=data, headers=headers)
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to refresh TikTok token: {response.text}"
+            )
         result = response.json()
         if "error" in result:
             raise HTTPException(
