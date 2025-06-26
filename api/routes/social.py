@@ -3,12 +3,19 @@ from schemas import VideoUpLoadRequest,VideoStatsResponse,GoogleVideoStatsRespon
 from models import User
 from api.deps import get_current_user
 from services.SocialNetwork import upload_video,get_video_stats,get_more_info_social_networks
+from services.Media.media_utils import check_media_of_user
 from typing import Union,Optional
 from schemas import SocialPlatform
 router = APIRouter(prefix="/social", tags=["Social Media"])
 @router.post("/upload-video",response_model=str)
 async def upload_video_to_social(upload_request: VideoUpLoadRequest=Form(...), user: User = Depends(get_current_user)):
     try:
+        check_media_belong_user = await check_media_of_user(user_id=user.id,media_id=upload_request.media_id)
+        if not check_media_belong_user:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to upload this media."
+            )
         result = await upload_video(user,upload_request)
         return result
     except Exception as e:

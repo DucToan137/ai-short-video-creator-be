@@ -434,3 +434,11 @@ def cleanup_temp_files(file_paths: list):
     """
     for file_path in file_paths:
         cleanup_temp_file(file_path)
+
+async def check_media_of_user(user_id:str, media_id:str) -> bool:
+    try:
+        media = await media_collection().find_one({"_id": ObjectId(media_id), "user_id": ObjectId(user_id)})
+        return media is not None
+    except Exception as e:
+        print(f"Error checking media ownership: {e}")
+        return False

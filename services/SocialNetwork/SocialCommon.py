@@ -3,7 +3,7 @@ from models import User
 from schemas import VideoUpLoadRequest,SocialPlatform
 from services.SocialNetwork import upload_video_to_youtube,get_youtube_video_stats
 from .Youtube import upload_video_to_youtube, get_youtube_video_stats
-from .Facebook import upload_video_to_facebook, get_facebook_video_stats
+from .Facebook import upload_video_to_facebook, get_facebook_video_stats,get_pages_of_user
 from .TikTok import upload_video_to_tiktok,get_list_of_tiktok_videos,get_tiktok_video_stats
 async def upload_video(user:User,upload_request:VideoUpLoadRequest):
     if upload_request.platform == SocialPlatform.GOOGLE:
@@ -44,6 +44,13 @@ async def get_more_info_social_networks(user:User,platform:SocialPlatform):
                 detail="Tiktok credentials are not available for the user."
             )
         return await get_list_of_tiktok_videos(user)
+    elif platform == SocialPlatform.FACEBOOK:
+        if not user.social_credentials or 'facebook' not in user.social_credentials:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Facebook credentials are not available for the user."
+            )
+        return await get_pages_of_user(user)
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

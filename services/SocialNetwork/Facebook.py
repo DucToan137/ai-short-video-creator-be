@@ -2,9 +2,12 @@ from schemas import VideoUpLoadRequest,FacebookVideoStatsResponse
 from models import User
 from services import check_facebook_credentials, get_media_by_id
 from fastapi import HTTPException, status
-import json
+from config import user_collection
 from schemas import SocialPlatform
 import requests
+from typing import Any,Dict,List
+from bson import ObjectId
+collection = user_collection()
 async def upload_video_to_facebook(user: User,page_id:str, upload_request: VideoUpLoadRequest) -> str:
     try:
         access_token =await check_facebook_credentials(user)
@@ -178,3 +181,34 @@ async def get_video_shares(post_id: str, access_token: str) -> int:
         return 0
     except Exception as e:
         return 0
+    
+async def get_pages_of_user(user:User)-> dict[str,Any]:
+    try:
+        user = await collection.find_one({"_id":ObjectId(user.id)})
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        if not user.get('social_credentials') or 'facebook' not in user['social_credentials']:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User does not have Facebook credentials"
+            )
+        facebook_credentials = user['social_credentials']['facebook']
+        if not facebook_credentials.get('pages'):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No Facebook pages found for the user"
+            )
+        pages = [
+            {k:v for k,v in page.items() if k!="access_token"}
+            for page in facebook_credentials['pages']
+        ]
+        return {"pages": pages}
+    except HTTPException as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch pages: {e.detail}"
+        )
+   
