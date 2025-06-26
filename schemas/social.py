@@ -14,6 +14,7 @@ class VideoUpLoadRequest (BaseModel):
     description: Optional[str] = ""
     tags: Optional[List[str]] = []
     privacy_status:str = Field(default="private")
+    page_id: Optional[str] = None
 
 class VideoStatsResponse(BaseModel):
     platform:SocialPlatform
