@@ -70,9 +70,8 @@ async def get_page_by_pageid(user:User,page_id:str):
         if page.get('id') == page_id:
             return page
         
-async def get_facebook_video_stats(user: User, video_id: str) -> FacebookVideoStatsResponse:
+async def get_facebook_video_stats(user: User, video_id: str,page_id:str=None) -> FacebookVideoStatsResponse:
     try:
-        page_id="697172490141410"  # Replace with actual page ID or fetch from user input
         access_token = await check_facebook_credentials(user)
        
         video_info = await get_video_basic_info(video_id, access_token)

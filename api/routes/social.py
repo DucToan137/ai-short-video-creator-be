@@ -25,7 +25,7 @@ async def upload_video_to_social(upload_request: VideoUpLoadRequest=Form(...), u
         ) 
     
 @router.get("/video-stats",response_model=Union[GoogleVideoStatsResponse,FacebookVideoStatsResponse])
-async def get_video_statstic(user:User =Depends(get_current_user),platform:str="",video_id:str=""):
+async def get_video_statstic(user:User =Depends(get_current_user),platform:str="",video_id:str="",page_id:Optional[str]=None):
     try:
         if not platform or not video_id:
             raise HTTPException(
@@ -33,7 +33,7 @@ async def get_video_statstic(user:User =Depends(get_current_user),platform:str="
                 detail="Platform and video ID are required."
             )
 
-        return await get_video_stats(user,video_id,platform)
+        return await get_video_stats(user,video_id,platform,page_id)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
