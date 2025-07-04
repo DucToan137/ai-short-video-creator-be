@@ -4,7 +4,7 @@ from google.auth.transport import requests
 from google.auth.exceptions import RefreshError
 from config import user_collection
 from models import User
-from services import get_user_by_email,get_user_by_username
+from services import get_user_by_email
 from .auth_utils import generate_username,generate_password
 from config import app_config
 from google.oauth2 import id_token
@@ -17,8 +17,7 @@ import json
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 from typing import Optional
-from bson import ObjectId  # Add ObjectId import
-
+from bson import ObjectId
 GOOGLE_CLIENT_ID = app_config.GOOGLE_CLIENT_ID
 GOOGLE_CLIENT_SECRET = app_config.GOOGLE_CLIENT_SECRET
 GOOGLE_REDIRECT_URI = app_config.GOOGLE_REDIRECT_URI
@@ -98,6 +97,7 @@ async def process_google_user(idinfo:Dict[str,Any],credentials) ->User:
     google_platform_data ={
         "credentials": credentials_data,
     }
+    print("Email from Google:", email)
     existing_user = await get_user_by_email(email)
     if existing_user:
         social_credentials = existing_user.social_credentials or {}
@@ -112,6 +112,10 @@ async def process_google_user(idinfo:Dict[str,Any],credentials) ->User:
         update_result = await collection.update_one(
             {"_id": user_object_id},
             {"$set": update_data}
+        # social_credentials['google'] = google_platform_data
+        # await collection.update_one(
+        #     {"_id": existing_user._id},
+        #     {"$set": {"social_credentials": social_credentials}}
         )
         
         existing_user.social_credentials = social_credentials
@@ -244,8 +248,12 @@ async def handle_google_callback(code: str, current_user: Optional[User] = None)
             user_object_id = ObjectId(existing_user.id) if isinstance(existing_user.id, str) else existing_user.id
             
             await collection.update_one(
-                {"_id": user_object_id},
+                # {"_id": user_object_id},
+                # {"$set": update_data}
+                {"_id":ObjectId(existing_user.id)},
                 {"$set": update_data}
+                # {"$set": {"social_credentials": social_credentials}}
+                
             )
             existing_user.social_credentials = social_credentials
             return existing_user

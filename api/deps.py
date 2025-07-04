@@ -14,14 +14,11 @@ async def get_current_user(credentials:HTTPAuthorizationCredentials =Depends(sec
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        print(f"Verifying token: {credentials.credentials[:20]}...")
         payload = verify_token(credentials.credentials,"access")
-        print(f"Token payload: {payload}")
         if payload is None:
             print("Token verification returned None")
             raise credentials_exception
         username = payload.get("sub")
-        print(f"Username from token: {username}")
         if username is None:
             print("No username in token")
             raise credentials_exception
@@ -32,10 +29,37 @@ async def get_current_user(credentials:HTTPAuthorizationCredentials =Depends(sec
         print(f"Other error in token verification: {e}")
         raise credentials_exception
     user = await get_user_by_username(username)
-    print(f"Found user: {user}")
     if user is None:
         print("User not found in database")
         raise credentials_exception
+    facebook = {}
+    google = {}
+    if user.social_credentials is not None:
+        social_credentials = user.social_credentials
+        if social_credentials.get("facebook") is not None:
+            facebook_credentials = social_credentials.get("facebook")
+            facebook = {
+                "facebook_id": facebook_credentials.get("facebook_id"),
+                "pages": facebook_credentials.get("pages", []),
+                "email": facebook_credentials.get("email"),
+                "avatar": facebook_credentials.get("avatar"),
+            }
+        if social_credentials.get("google") is not None:
+            google_credentials = social_credentials.get("google")
+            google = {
+                "email": google_credentials.get("email"),
+                "avatar": google_credentials.get("avatar"),
+            }
+            
+    new_social_credentials = {
+        "facebook": facebook,
+        "google": google
+    }
+    
+    user_dict = user.model_dump()
+    user_dict["social_credentials"] = new_social_credentials
+    user = User(**user_dict)
+    
     return user
 
 async def get_current_user_optional(request: Request) -> Optional[User]:
