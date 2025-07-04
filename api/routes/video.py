@@ -6,6 +6,7 @@ import tempfile
 from datetime import datetime
 import asyncio
 import httpx
+from bson import ObjectId
 from services.voice_service import get_voice_by_id
 from api.deps import get_current_user
 from models.user import User
@@ -69,62 +70,90 @@ async def create_complete_video(
         
         # Validate user_id is a valid ObjectId format
         try:
-            from bson import ObjectId
             ObjectId(user_id)  # This will raise exception if invalid
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid user ID format")
         
-        # Step 1: Generate audio from script
-        print("Generating audio from script...")
+        # Step 1: Handle audio - use provided audio_url or generate from voice_id
+        print("Handling audio...")
         audio_path = None
-        fallback_audio_path = os.path.join(TEMP_DIR, "fallback_audio.wav")
-        fallback_audio_url = "https://res.cloudinary.com/dsozekr7k/video/upload/v1750415589/audio/pymxnd8dbtlb9rsqwmxe.wav"
+        audio_result = None
         
-        # Get voice configuration and convert to actual voice name
-        voice_data = get_voice_by_id(request.voice_id)
-        if not voice_data:
-            raise HTTPException(status_code=400, detail=f"Voice {request.voice_id} not found")
-            
-        # Extract the actual voice name for TTS
-        actual_voice_name = voice_data.get("name", "Kore")  # Use voice name, fallback to Kore
-        print(f"🎤 Using voice: {actual_voice_name} (mapped from {request.voice_id})")
-        
-        try:
-            audio_result = await generate_speech_async(request.script_text, actual_voice_name, user_id)
-            if audio_result and audio_result.get("audio_url"):
-                # Download audio from Cloudinary to temp file for video creation
-                audio_path = os.path.join(TEMP_DIR, f"audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav")
+        if request.audio_url:
+            # Use provided audio URL (uploaded by user or from AI generation)
+            print(f"🎵 Using provided audio URL: {request.audio_url}")
+            audio_path = os.path.join(TEMP_DIR, f"audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav")
+            try:
                 async with httpx.AsyncClient() as client:
-                    audio_response = await client.get(audio_result["audio_url"])
+                    audio_response = await client.get(request.audio_url)
                     audio_response.raise_for_status()
                     with open(audio_path, "wb") as f:
                         f.write(audio_response.content)
-                print(f"✅ Successfully generated and downloaded audio: {audio_path}")
-            else:
-                raise Exception("No audio URL returned from generation")
-
-        except Exception as e:
-            print(f"⚠️ Audio generation failed: {e}")
-            # Fallback: download fallback audio if not already downloaded
-            if not os.path.exists(fallback_audio_path):
-                try:
-                    print(f"🔄 Downloading fallback audio from: {fallback_audio_url}")
+                print(f"✅ Successfully downloaded audio: {audio_path}")
+                audio_result = {
+                    "audio_url": request.audio_url,
+                    "duration": 30,  # You might want to calculate actual duration
+                    "audio_id": "user_provided"
+                }
+            except Exception as e:
+                print(f"❌ Failed to download provided audio: {e}")
+                raise HTTPException(status_code=400, detail=f"Failed to download audio from provided URL: {e}")
+        
+        elif request.voice_id:
+            # Generate audio from voice_id (existing logic)
+            print("Generating audio from script...")
+            fallback_audio_path = os.path.join(TEMP_DIR, "fallback_audio.wav")
+            fallback_audio_url = "https://res.cloudinary.com/dsozekr7k/video/upload/v1750415589/audio/pymxnd8dbtlb9rsqwmxe.wav"
+            
+            # Get voice configuration and convert to actual voice name
+            voice_data = get_voice_by_id(request.voice_id)
+            if not voice_data:
+                raise HTTPException(status_code=400, detail=f"Voice {request.voice_id} not found")
+                
+            # Extract the actual voice name for TTS
+            actual_voice_name = voice_data.get("name", "Kore")  # Use voice name, fallback to Kore
+            print(f"🎤 Using voice: {actual_voice_name} (mapped from {request.voice_id})")
+            
+            try:
+                audio_result = await generate_speech_async(request.script_text, actual_voice_name, user_id)
+                if audio_result and audio_result.get("audio_url"):
+                    # Download audio from Cloudinary to temp file for video creation
+                    audio_path = os.path.join(TEMP_DIR, f"audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav")
                     async with httpx.AsyncClient() as client:
-                        fallback_response = await client.get(fallback_audio_url)
-                        fallback_response.raise_for_status()
-                        with open(fallback_audio_path, "wb") as f:
-                            f.write(fallback_response.content)
-                    print(f"✅ Fallback audio downloaded: {fallback_audio_path}")
-                except Exception as download_err:
-                    print(f"❌ Failed to download fallback audio: {download_err}")
-                    raise HTTPException(status_code=500, detail="Failed to generate audio and fallback download failed.")            # Use fallback audio file
-            audio_path = fallback_audio_path
-            print(f"🔄 Using fallback audio file: {fallback_audio_path}")
-            audio_result = {
-                "audio_url": f"file://{fallback_audio_path}",
-                "duration": 30,  # Estimated or fixed duration
-                "audio_id": "fallback_audio"
-            }
+                        audio_response = await client.get(audio_result["audio_url"])
+                        audio_response.raise_for_status()
+                        with open(audio_path, "wb") as f:
+                            f.write(audio_response.content)
+                    print(f"✅ Successfully generated and downloaded audio: {audio_path}")
+                else:
+                    raise Exception("No audio URL returned from generation")
+
+            except Exception as e:
+                print(f"⚠️ Audio generation failed: {e}")
+                # Fallback: download fallback audio if not already downloaded
+                if not os.path.exists(fallback_audio_path):
+                    try:
+                        print(f"🔄 Downloading fallback audio from: {fallback_audio_url}")
+                        async with httpx.AsyncClient() as client:
+                            fallback_response = await client.get(fallback_audio_url)
+                            fallback_response.raise_for_status()
+                            with open(fallback_audio_path, "wb") as f:
+                                f.write(fallback_response.content)
+                        print(f"✅ Fallback audio downloaded: {fallback_audio_path}")
+                    except Exception as download_err:
+                        print(f"❌ Failed to download fallback audio: {download_err}")
+                        raise HTTPException(status_code=500, detail="Failed to generate audio and fallback download failed.")
+                
+                # Use fallback audio file
+                audio_path = fallback_audio_path
+                print(f"🔄 Using fallback audio file: {fallback_audio_path}")
+                audio_result = {
+                    "audio_url": f"file://{fallback_audio_path}",
+                    "duration": 30,  # Estimated or fixed duration
+                    "audio_id": "fallback_audio"
+                }
+        else:
+            raise HTTPException(status_code=400, detail="Either audio_url or voice_id must be provided")
 
         if not audio_path or not os.path.exists(audio_path):
             raise HTTPException(status_code=500, detail="No audio file available for video creation")
@@ -174,8 +203,21 @@ async def create_complete_video(
         video_path = os.path.join(TEMP_DIR, f"video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
         
         if len(background_paths) > 1:
-            # Multi-scene video
-            video_result = create_multi_scene_video(background_paths, audio_path, video_path)
+            # Multi-scene video with optional video settings
+            video_settings = request.video_settings
+            if video_settings:
+                video_result = create_multi_scene_video(
+                    background_paths, 
+                    audio_path, 
+                    video_path,
+                    min_scene_duration=video_settings.min_scene_duration,
+                    max_scene_duration=video_settings.max_scene_duration,
+                    transition_duration=video_settings.transition_duration,
+                    enable_transitions=video_settings.enable_transitions
+                )
+            else:
+                # Use default settings
+                video_result = create_multi_scene_video(background_paths, audio_path, video_path)
         else:
             # Single scene video
             video_result = create_video(background_paths[0], audio_path, video_path)
@@ -277,7 +319,6 @@ async def create_video_from_components(
         
         # Validate user_id is a valid ObjectId format
         try:
-            from bson import ObjectId
             ObjectId(user_id)  # This will raise exception if invalid
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid user ID format")
@@ -345,8 +386,21 @@ async def create_video_from_components(
         video_path = os.path.join(TEMP_DIR, f"video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
         
         if len(background_paths) > 1:
-            # Multi-scene video
-            video_result = create_multi_scene_video(background_paths, audio_path, video_path)
+            # Multi-scene video with optional video settings
+            video_settings = request.video_settings
+            if video_settings:
+                video_result = create_multi_scene_video(
+                    background_paths, 
+                    audio_path, 
+                    video_path,
+                    min_scene_duration=video_settings.min_scene_duration,
+                    max_scene_duration=video_settings.max_scene_duration,
+                    transition_duration=video_settings.transition_duration,
+                    enable_transitions=video_settings.enable_transitions
+                )
+            else:
+                # Use default settings
+                video_result = create_multi_scene_video(background_paths, audio_path, video_path)
         else:
             # Single scene video
             video_result = create_video(background_paths[0], audio_path, video_path)

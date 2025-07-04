@@ -197,23 +197,12 @@ async def generate_custom_background(prompt: str, style: str = "realistic", reso
             width, height = map(int, resolution.split('x'))
         else:
             width, height = 1080, 1920
-            
-        # Enhance prompt based on style
-        style_prompts = {
-            "realistic": f"{prompt}, photorealistic, high quality, detailed",
-            "abstract": f"{prompt}, abstract art, artistic, creative, colorful",
-            "cartoon": f"{prompt}, cartoon style, illustrated, vibrant colors",
-            "minimalist": f"{prompt}, minimalist, clean, simple, modern",
-            "vintage": f"{prompt}, vintage style, retro, classic"
-        }
-        
-        enhanced_prompt = style_prompts.get(style, f"{prompt}, {style} style")
         
         # Generate image using existing service
         output_file = os.path.join(TEMP_DIR, f"bg_custom_{uuid4()}.png")
         
         # Use Flux model for background generation
-        result_file = generate_image("flux", enhanced_prompt, output_file)
+        result_file = generate_image("flux", prompt, style, output_file)
         
         if not result_file or not os.path.exists(result_file):
             raise Exception("Failed to generate background image")

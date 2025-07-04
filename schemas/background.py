@@ -1,5 +1,12 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Literal
+
+# Available styles - keep in sync with frontend and text_to_image.py
+AVAILABLE_STYLES = [
+    "ghibli", "watercolor", "manga", "pixar", "scifi", "oilpainting",
+    "dark", "lego", "realistic", "cartoon", "vintage", "minimalist",
+    "fantasy", "popart", "impressionist"
+]
 
 class BackgroundResponse(BaseModel):
     """Schema for background response"""
@@ -21,7 +28,11 @@ class BackgroundListResponse(BaseModel):
 class BackgroundGenerationRequest(BaseModel):
     """Schema for custom background generation"""
     prompt: str = Field(..., min_length=1, max_length=500, description="Description of background to generate")
-    style: Optional[str] = Field("realistic", description="Generation style: realistic, abstract, cartoon")
+    style: Optional[Literal[
+        "ghibli", "watercolor", "manga", "pixar", "scifi", "oilpainting",
+        "dark", "lego", "realistic", "cartoon", "vintage", "minimalist",
+        "fantasy", "popart", "impressionist"
+    ]] = Field("realistic", description="Generation style - see AVAILABLE_STYLES for options")
     resolution: Optional[str] = Field("1080x1920", description="Image resolution for vertical video")
 
 class BackgroundGenerationResponse(BaseModel):

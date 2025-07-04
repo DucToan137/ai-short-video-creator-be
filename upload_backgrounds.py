@@ -49,7 +49,7 @@ def generate_and_upload_preset_backgrounds():
             output_file = os.path.join(TEMP_DIR, f"{bg_id}_background.png")
             print(f"   🖼️ Generating image...")
             
-            result_file = generate_image("flux", enhanced_prompt, output_file)
+            result_file = generate_image("flux", enhanced_prompt, None, output_file)
             
             if result_file and os.path.exists(result_file):
                 # Upload to Cloudinary
@@ -91,7 +91,7 @@ def generate_demo_backgrounds():
             print(f"\n🎯 Generating demo background {i}/3...")
             
             output_file = os.path.join(TEMP_DIR, f"demo_bg_{i}.png")
-            result_file = generate_image("flux", prompt, output_file)
+            result_file = generate_image("flux", prompt, None, output_file)
             
             if result_file and os.path.exists(result_file):
                 public_url = upload_image_to_cloudinary(result_file, "backgrounds/demo")
