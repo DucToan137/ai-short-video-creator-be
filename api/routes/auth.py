@@ -2,7 +2,7 @@ from fastapi import APIRouter,HTTPException,Form,Response,Request,Depends,status
 from fastapi.responses import RedirectResponse
 from models import User
 from schemas import UserResponse, UserCreate, UserLogin, UserUpdate, ChangePassword, Token
-from api.deps import get_current_user, get_current_user_optional
+from api.deps import get_current_user, get_current_user_optional, get_current_user_no_credential
 from typing import Optional
 from services import create_user,authenticate_user,\
     get_google_oauth_url, get_facebook_oauth_url,get_tiktok_auth_url,\
@@ -329,7 +329,7 @@ async def refresh_token(request:Request):
             detail=f"An error occurred while logging out: {str(e)}"
         )
 @router.get("/me", response_model=UserResponse)
-async def get_me(current_user: User = Depends(get_current_user)):
+async def get_me(current_user: User = Depends(get_current_user_no_credential)):
     return UserResponse(**current_user.model_dump(exclude={"password"}))
 
 @router.put("/update", response_model=UserResponse)
