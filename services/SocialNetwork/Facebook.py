@@ -1,6 +1,6 @@
 from schemas import VideoUpLoadRequest,FacebookVideoStatsResponse
 from models import User,SocialVideoCreate
-from services import check_facebook_credentials
+from services import check_facebook_credentials, get_media_by_id
 from .SocialUtils import add_social_video
 from fastapi import HTTPException, status
 from config import user_collection
@@ -29,14 +29,29 @@ async def upload_video_to_facebook(user: User,page_id:str, upload_request: Video
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Page access token not found"
             )
+        # Get media from media_id
+        media = await get_media_by_id(upload_request.media_id)
+        if not media:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Media not found"
+            )
+        media_url = media.get('url') or media.get('cloudinary_url')
+        if not media_url:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unable to get media URL"
+            )
+
         upload_url=f"https://graph.facebook.com/v23.0/{page_id}/videos"
         upload_data ={
             "title": upload_request.title,
             "description": upload_request.description,
-            "file_url": "https://www.w3schools.com/tags/mov_bbb.mp4",
+            "file_url": media_url,
             "access_token": page_access_token,
-            "privacy": "{\"value\":\"EVERYONE\"}"
+            "privacy": "{\"value\":\"EVERYONE\"}"  # Always public
         }
+        # Remove commented privacy mapping code since we always use public
         if upload_request.tags:
             upload_data["tags"] = ",".join(upload_request.tags)
         
@@ -73,17 +88,43 @@ async def get_page_by_pageid(user:User,page_id:str):
 async def get_facebook_video_stats(user: User, video_id: str,page_id:str=None) -> FacebookVideoStatsResponse:
     try:
         access_token = await check_facebook_credentials(user)
-       
+        
         video_info = await get_video_basic_info(video_id, access_token)
-        post_id_from_video_id = video_info.get("post_id")
-        post_id = f"{page_id}_{post_id_from_video_id}"
-        page = await get_page_by_pageid(user, page_id)
+        
+        facebook_pages = user.social_credentials.get('facebook', {}).get('pages', [])
+        page = None
+        page_access_token = None
+        
+        for user_page in facebook_pages:
+            page_id = user_page.get('id')
+            post_id_from_video_id = video_info.get("post_id")
+            if post_id_from_video_id:
+                test_post_id = f"{page_id}_{post_id_from_video_id}"
+                try:
+                    temp_page_token = user_page.get('access_token')
+                    if temp_page_token:
+                        test_url = f"https://graph.facebook.com/v23.0/{test_post_id}"
+                        response = requests.get(test_url, params={'access_token': temp_page_token})
+                        if response.status_code == 200:
+                            page = user_page
+                            page_access_token = temp_page_token
+                            post_id = test_post_id
+                            break
+                except:
+                    continue
+        
         if not page:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Page not found"
-            )
-        page_access_token = page.get('access_token')
+            if facebook_pages:
+                page = facebook_pages[0]
+                page_access_token = page.get('access_token')
+                post_id_from_video_id = video_info.get("post_id")
+                post_id = f"{page['id']}_{post_id_from_video_id}" if post_id_from_video_id else None
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="No Facebook pages found for user"
+                )
+        
         if not page_access_token:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

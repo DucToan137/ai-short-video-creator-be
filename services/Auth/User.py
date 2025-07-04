@@ -55,6 +55,7 @@ async def create_user(user:UserCreate) ->User:
     hashed_password = hash_password(user.password)
     new_user = user.model_dump()
     new_user["password"] = hashed_password
+    new_user["type"] = "regular"  # Set type to "regular" for username/password registration
     try:
         result = await collection.insert_one(new_user)
         created_user = await collection.find_one({"_id": result.inserted_id})
@@ -79,6 +80,19 @@ async def authenticate_user(user:UserLogin) ->User|None:
             return None
         if not verify_password(user.password,userDB.password):
             return None
+        
+        if not userDB.model_dump().get("type"):
+            user_dict = await collection.find_one({"_id": ObjectId(userDB.id)})
+            has_social = user_dict.get("social_credentials", {})
+            # Only set to "regular" if no social credentials exist
+            if not has_social.get("google") and not has_social.get("facebook"):
+                await collection.update_one(
+                    {"_id": ObjectId(userDB.id)},
+                    {"$set": {"type": "regular"}}
+                )
+                # Refresh user object
+                userDB = await get_user_by_id(userDB.id)
+        
         return userDB
     except Exception as e:
       return None
@@ -110,6 +124,11 @@ async def change_password(user_id: str, current_password: str, new_password: str
     user = await collection.find_one({"_id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    
+    user_type = user.get("type", "regular") 
+    if user_type != "regular":
+        raise HTTPException(status_code=400, detail="Cannot change password for social media accounts. Please use your social media account to sign in.")
+    
     if not verify_password(current_password, user["password"]):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
     new_hashed = hash_password(new_password)

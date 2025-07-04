@@ -19,8 +19,21 @@ async def upload_video(user:User,upload_request:VideoUpLoadRequest):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Facebook credentials are not available for the user."
             )
+        
+        # Get page_id from request, if not provided use first page from user credentials
+        page_id = upload_request.page_id
+        if not page_id:
+            facebook_pages = user.social_credentials.get('facebook', {}).get('pages', [])
+            if not facebook_pages:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="No Facebook pages found. Please specify page_id or link your Facebook pages."
+                )
+            page_id = facebook_pages[0].get('id')
+            
+        return await upload_video_to_facebook(user, page_id, upload_request)
 
-        return await upload_video_to_facebook(user,upload_request.page_id, upload_request)
+        # return await upload_video_to_facebook(user,upload_request.page_id, upload_request)
     elif upload_request.platform == SocialPlatform.TIKTOK:
         if not user.social_credentials or 'tiktok' not in user.social_credentials:
             raise HTTPException(
