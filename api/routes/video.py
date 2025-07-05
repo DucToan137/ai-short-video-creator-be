@@ -12,7 +12,7 @@ from api.deps import get_current_user
 from models.user import User
 from services.Media.media_utils import create_video, create_multi_scene_video, add_subtitles, upload_media, get_media_by_id
 from services.Media.text_to_speech import generate_speech_async
-from services.subtitle_service import generate_srt_content
+from services.subtitle_service import generate_srt_content, generate_subtitles_from_audio
 from config import TEMP_DIR
 from schemas.media import MediaResponse, CompleteVideoRequest, VideoFromComponentsRequest
 from models.user import User
@@ -74,31 +74,16 @@ async def create_complete_video(
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid user ID format")
         
-        # Step 1: Handle audio - use provided audio_url or generate from voice_id
+        # Step 1: Handle audio - ALWAYS use audio_url (unified approach)
         print("Handling audio...")
         audio_path = None
         audio_result = None
+        audio_url = None
         
         if request.audio_url:
             # Use provided audio URL (uploaded by user or from AI generation)
             print(f"🎵 Using provided audio URL: {request.audio_url}")
-            audio_path = os.path.join(TEMP_DIR, f"audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav")
-            try:
-                async with httpx.AsyncClient() as client:
-                    audio_response = await client.get(request.audio_url)
-                    audio_response.raise_for_status()
-                    with open(audio_path, "wb") as f:
-                        f.write(audio_response.content)
-                print(f"✅ Successfully downloaded audio: {audio_path}")
-                audio_result = {
-                    "audio_url": request.audio_url,
-                    "duration": 30,  # You might want to calculate actual duration
-                    "audio_id": "user_provided"
-                }
-            except Exception as e:
-                print(f"❌ Failed to download provided audio: {e}")
-                raise HTTPException(status_code=400, detail=f"Failed to download audio from provided URL: {e}")
-        
+            audio_url = request.audio_url
         elif request.voice_id:
             # Generate audio from voice_id (existing logic)
             print("Generating audio from script...")
@@ -117,46 +102,48 @@ async def create_complete_video(
             try:
                 audio_result = await generate_speech_async(request.script_text, actual_voice_name, user_id)
                 if audio_result and audio_result.get("audio_url"):
-                    # Download audio from Cloudinary to temp file for video creation
-                    audio_path = os.path.join(TEMP_DIR, f"audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav")
-                    async with httpx.AsyncClient() as client:
-                        audio_response = await client.get(audio_result["audio_url"])
-                        audio_response.raise_for_status()
-                        with open(audio_path, "wb") as f:
-                            f.write(audio_response.content)
-                    print(f"✅ Successfully generated and downloaded audio: {audio_path}")
+                    audio_url = audio_result["audio_url"]
+                    print(f"✅ Successfully generated audio: {audio_url}")
                 else:
                     raise Exception("No audio URL returned from generation")
 
             except Exception as e:
                 print(f"⚠️ Audio generation failed: {e}")
-                # Fallback: download fallback audio if not already downloaded
-                if not os.path.exists(fallback_audio_path):
-                    try:
-                        print(f"🔄 Downloading fallback audio from: {fallback_audio_url}")
-                        async with httpx.AsyncClient() as client:
-                            fallback_response = await client.get(fallback_audio_url)
-                            fallback_response.raise_for_status()
-                            with open(fallback_audio_path, "wb") as f:
-                                f.write(fallback_response.content)
-                        print(f"✅ Fallback audio downloaded: {fallback_audio_path}")
-                    except Exception as download_err:
-                        print(f"❌ Failed to download fallback audio: {download_err}")
-                        raise HTTPException(status_code=500, detail="Failed to generate audio and fallback download failed.")
-                
-                # Use fallback audio file
-                audio_path = fallback_audio_path
-                print(f"🔄 Using fallback audio file: {fallback_audio_path}")
+                # Fallback: use fallback audio URL directly
+                audio_url = fallback_audio_url
+                print(f"🔄 Using fallback audio URL: {fallback_audio_url}")
                 audio_result = {
-                    "audio_url": f"file://{fallback_audio_path}",
+                    "audio_url": audio_url,
                     "duration": 30,  # Estimated or fixed duration
                     "audio_id": "fallback_audio"
                 }
         else:
             raise HTTPException(status_code=400, detail="Either audio_url or voice_id must be provided")
 
-        if not audio_path or not os.path.exists(audio_path):
-            raise HTTPException(status_code=500, detail="No audio file available for video creation")
+        if not audio_url:
+            raise HTTPException(status_code=500, detail="No audio URL available for video creation")
+        
+        # Download audio from URL to temp file for video creation (unified step)
+        print(f"� Downloading audio from URL: {audio_url}")
+        audio_path = os.path.join(TEMP_DIR, f"audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav")
+        try:
+            async with httpx.AsyncClient() as client:
+                audio_response = await client.get(audio_url)
+                audio_response.raise_for_status()
+                with open(audio_path, "wb") as f:
+                    f.write(audio_response.content)
+            print(f"✅ Audio downloaded successfully: {audio_path}")
+        except Exception as e:
+            print(f"❌ Failed to download audio: {e}")
+            raise HTTPException(status_code=400, detail=f"Failed to download audio from URL: {e}")
+
+        # Ensure audio_result is set with the final audio_url
+        if not audio_result:
+            audio_result = {
+                "audio_url": audio_url,
+                "duration": 30,  # Default duration
+                "audio_id": "user_provided"
+            }
           # Step 2: Get background images
         print("Fetching background images...")
         background_paths = []
@@ -229,25 +216,95 @@ async def create_complete_video(
           # Step 4: Add subtitles if enabled
         if request.subtitle_enabled:
             print("Adding subtitles to video...")
-            # Generate SRT content
-            srt_content = generate_srt_content(request.script_text, audio_result.get("duration", 30))
-            
-            # Save SRT to temp file
-            srt_path = os.path.join(TEMP_DIR, f"subtitles_{datetime.now().strftime('%Y%m%d_%H%M%S')}.srt")
-            with open(srt_path, "w", encoding="utf-8") as f:
-                f.write(srt_content)
-            
-            # Add subtitles to video
-            subtitled_video_path = os.path.join(TEMP_DIR, f"final_video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
-            subtitle_result = add_subtitles(video_path, srt_path, subtitled_video_path)
-            
-            if subtitle_result:
-                final_video_path = subtitle_result
-                # Clean up intermediate video
-                if os.path.exists(video_path):
-                    os.remove(video_path)
-                if os.path.exists(srt_path):
-                    os.remove(srt_path)
+            try:
+                srt_path = None
+                
+                # Check if we have uploaded audio and should generate subtitles from audio
+                if hasattr(request, 'audio_source') and request.audio_source == "uploaded" and audio_path:
+                    print("🎤 Generating subtitles from uploaded audio...")
+                    try:
+                        # Generate subtitles from audio transcription
+                        print(f"🎵 Audio file for transcription: {audio_path}")
+                        print(f"🌐 Subtitle language: {request.subtitle_language}")
+                        
+                        subtitle_data = generate_subtitles_from_audio(
+                            audio_path, 
+                            language=request.subtitle_language
+                        )
+                        srt_path = subtitle_data["srt_file_path"]
+                        print(f"📝 SRT file generated from audio: {srt_path}")
+                        
+                        # Debug timing information
+                        if subtitle_data.get("segments"):
+                            print(f"🕐 Subtitle timing info:")
+                            print(f"   Total segments: {len(subtitle_data['segments'])}")
+                            print(f"   Duration: {subtitle_data.get('total_duration', 'unknown'):.2f}s")
+                            
+                            # Show first few segments for debugging
+                            for i, seg in enumerate(subtitle_data['segments'][:3]):
+                                print(f"   Segment {i+1}: {seg['start_time']:.2f}s-{seg['end_time']:.2f}s: '{seg['text'][:30]}...'")
+                                
+                    except Exception as audio_error:
+                        print(f"⚠️ Failed to generate subtitles from audio: {audio_error}")
+                        # Fallback to script text if available
+                        if request.script_text:
+                            print("📝 Falling back to generating subtitles from script text...")
+                            from services.Media.media_utils import get_audio_duration
+                            actual_duration = get_audio_duration(audio_path)
+                            print(f"🎵 Detected audio duration: {actual_duration:.2f}s")
+                            
+                            srt_content = generate_srt_content(request.script_text, actual_duration)
+                            srt_path = os.path.join(TEMP_DIR, f"subtitles_{datetime.now().strftime('%Y%m%d_%H%M%S')}.srt")
+                            with open(srt_path, "w", encoding="utf-8") as f:
+                                f.write(srt_content)
+                            print(f"📝 SRT file created from script: {srt_path}")
+                        else:
+                            print("⚠️ No script text available for fallback")
+                            srt_path = None
+                    
+                elif request.script_text:
+                    print("📝 Generating subtitles from script text...")
+                    # Generate SRT content from script with proper timing
+                    from services.Media.media_utils import get_audio_duration
+                    actual_duration = get_audio_duration(audio_path)
+                    print(f"🎵 Detected audio duration: {actual_duration:.2f}s")
+                    
+                    srt_content = generate_srt_content(request.script_text, actual_duration)
+                    
+                    # Save SRT to temp file
+                    srt_path = os.path.join(TEMP_DIR, f"subtitles_{datetime.now().strftime('%Y%m%d_%H%M%S')}.srt")
+                    with open(srt_path, "w", encoding="utf-8") as f:
+                        f.write(srt_content)
+                    print(f"📝 SRT file created from script: {srt_path}")
+                else:
+                    print("⚠️ No script text provided and audio source is not uploaded, skipping subtitles")
+                    srt_path = None
+                
+                # Add subtitles to video if we have an SRT file
+                if srt_path and os.path.exists(srt_path):
+                    print(f"🎬 Adding subtitles to video using SRT: {srt_path}")
+                    subtitled_video_path = os.path.join(TEMP_DIR, f"final_video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
+                    subtitle_result = add_subtitles(video_path, srt_path, subtitled_video_path)
+                    
+                    if subtitle_result and os.path.exists(subtitle_result):
+                        print(f"✅ Subtitles added successfully: {subtitle_result}")
+                        final_video_path = subtitle_result
+                        # Clean up intermediate video
+                        if os.path.exists(video_path):
+                            os.remove(video_path)
+                        print("📝 Keeping SRT file for debugging purposes")
+                        # Note: Keeping SRT file instead of removing for debugging
+                    else:
+                        print("⚠️ Subtitle addition failed, using video without subtitles")
+                        # Clean up SRT file if subtitle addition failed
+                        if os.path.exists(srt_path):
+                            os.remove(srt_path)
+                else:
+                    print("📝 No SRT file available for subtitle addition")
+                        
+            except Exception as e:
+                print(f"⚠️ Subtitle processing failed: {e}, continuing without subtitles")
+                # Continue with video without subtitles if subtitle fails
           # Step 5: Upload final video to cloud
         print("Uploading final video to cloud...")
           # Convert subtitle_style to string if it's an object
@@ -264,7 +321,11 @@ async def create_complete_video(
             resource_type="video",
             prompt=f"Complete video: {request.script_text[:50]}...",            metadata={
                 "voice_id": request.voice_id,
-                "audio_id": audio_result.get("audio_id"),  # Link to audio file
+                "audio_url": audio_url,  # Store audio URL instead of audio_id
+                "audio_source": getattr(request, 'audio_source', None),  # Track audio source
+                "uploaded_audio_id": getattr(request, 'uploaded_audio_id', None),  # Track uploaded audio ID
+                "voice_settings": getattr(request, 'voice_settings', None),  # Track voice settings
+                "audio_id": audio_result.get("audio_id") if audio_result else None,  # Keep for backward compatibility
                 "background_image_id": request.background_image_id,  # Keep for backward compatibility
                 "background_image_ids": background_ids,  # Multiple background support
                 "is_multi_scene": len(background_ids) > 1,
@@ -272,7 +333,8 @@ async def create_complete_video(
                 "subtitle_enabled": request.subtitle_enabled,
                 "subtitle_language": request.subtitle_language,
                 "subtitle_style": subtitle_style_str,
-                "script_text": request.script_text[:200]  # Save partial script for reference
+                "subtitle_status": "generated_from_audio" if (hasattr(request, 'audio_source') and request.audio_source == "uploaded" and srt_path) else "generated_from_script" if srt_path else "disabled",
+                "script_text": request.script_text[:200] if request.script_text else None  # Save partial script for reference
             }
         )        # Clean up temporary files
         cleanup_files = [audio_path, final_video_path] + background_paths
@@ -289,7 +351,11 @@ async def create_complete_video(
             "url": upload_result["url"],
             "public_id": upload_result["public_id"],            "metadata": {
                 "voice_id": request.voice_id,
-                "audio_id": audio_result.get("audio_id"),
+                "audio_url": audio_url,  # Store audio URL instead of audio_id
+                "audio_source": getattr(request, 'audio_source', None),  # Track audio source
+                "uploaded_audio_id": getattr(request, 'uploaded_audio_id', None),  # Track uploaded audio ID
+                "voice_settings": getattr(request, 'voice_settings', None),  # Track voice settings
+                "audio_id": audio_result.get("audio_id") if audio_result else None,
                 "background_image_id": request.background_image_id,  # Keep for backward compatibility
                 "background_image_ids": background_ids,  # Multiple background support
                 "is_multi_scene": len(background_ids) > 1,
@@ -297,7 +363,7 @@ async def create_complete_video(
                 "subtitle_enabled": request.subtitle_enabled,
                 "subtitle_language": request.subtitle_language,
                 "subtitle_style": subtitle_style_str,
-                "script_text": request.script_text[:200]
+                "script_text": request.script_text[:200] if request.script_text else None
             },
             "created_at": datetime.now(),
             "updated_at": datetime.now()        }
@@ -336,6 +402,10 @@ async def create_video_from_components(
                        f"Media type: {audio_media.get('media_type')}, "
                        f"Public ID: {audio_media.get('public_id')}"
             )
+        
+        # Get audio URL
+        audio_url = audio_media["url"]
+        print(f"🎵 Using audio URL: {audio_url}")
           # Get background images
         background_paths = []
         background_ids = []
@@ -348,15 +418,17 @@ async def create_video_from_components(
         else:
             raise HTTPException(status_code=400, detail="No background image provided")
         
-        # Download files to temp
+        # Download files to temp - unified audio download
         audio_path = os.path.join(TEMP_DIR, f"audio_{request.audio_file_id}.wav")
         
-        # Download audio
+        # Download audio from URL
         async with httpx.AsyncClient() as client:
-            audio_response = await client.get(audio_media["url"])
+            print(f"📥 Downloading audio from: {audio_url}")
+            audio_response = await client.get(audio_url)
             audio_response.raise_for_status()
             with open(audio_path, "wb") as f:
                 f.write(audio_response.content)
+            print(f"✅ Audio downloaded: {audio_path}")
             
             # Download all background images with validation
             for i, bg_id in enumerate(background_ids):
@@ -410,23 +482,74 @@ async def create_video_from_components(
         
         final_video_path = video_result
         
-        # Add subtitles if enabled and script provided
-        if request.subtitle_enabled and request.script_text:
-            srt_content = generate_srt_content(request.script_text, 30)  # Estimate duration
-            srt_path = os.path.join(TEMP_DIR, f"subtitles_{datetime.now().strftime('%Y%m%d_%H%M%S')}.srt")
-            
-            with open(srt_path, "w", encoding="utf-8") as f:
-                f.write(srt_content)
-            
-            subtitled_video_path = os.path.join(TEMP_DIR, f"final_video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
-            subtitle_result = add_subtitles(video_path, srt_path, subtitled_video_path)
-            
-            if subtitle_result:
-                final_video_path = subtitle_result
-                if os.path.exists(video_path):
-                    os.remove(video_path)
-                if os.path.exists(srt_path):
-                    os.remove(srt_path)
+        # Add subtitles if enabled
+        if request.subtitle_enabled:
+            print("Adding subtitles to video...")
+            try:
+                srt_path = None
+                
+                # For components endpoint, always try to generate subtitles from uploaded audio first
+                if audio_path:
+                    print("🎤 Generating subtitles from uploaded audio...")
+                    try:
+                        # Generate subtitles from audio transcription
+                        subtitle_data = generate_subtitles_from_audio(
+                            audio_path, 
+                            language=request.subtitle_language
+                        )
+                        srt_path = subtitle_data["srt_file_path"]
+                        print(f"📝 SRT file generated from audio: {srt_path}")
+                    except Exception as audio_subtitle_error:
+                        print(f"⚠️ Failed to generate subtitles from audio: {audio_subtitle_error}")
+                        # Fallback to script text if available
+                        if request.script_text:
+                            print("📝 Falling back to generating subtitles from script text...")
+                            from services.Media.media_utils import get_audio_duration
+                            actual_duration = get_audio_duration(audio_path)
+                            print(f"🎵 Detected audio duration: {actual_duration:.2f}s")
+                            
+                            srt_content = generate_srt_content(request.script_text, actual_duration)
+                            srt_path = os.path.join(TEMP_DIR, f"subtitles_{datetime.now().strftime('%Y%m%d_%H%M%S')}.srt")
+                            with open(srt_path, "w", encoding="utf-8") as f:
+                                f.write(srt_content)
+                            print(f"📝 SRT file created from script: {srt_path}")
+                elif request.script_text:
+                    print("📝 Generating subtitles from script text...")
+                    from services.Media.media_utils import get_audio_duration
+                    actual_duration = get_audio_duration(audio_path)
+                    print(f"🎵 Detected audio duration: {actual_duration:.2f}s")
+                    
+                    srt_content = generate_srt_content(request.script_text, actual_duration)
+                    srt_path = os.path.join(TEMP_DIR, f"subtitles_{datetime.now().strftime('%Y%m%d_%H%M%S')}.srt")
+                    with open(srt_path, "w", encoding="utf-8") as f:
+                        f.write(srt_content)
+                    print(f"📝 SRT file created from script: {srt_path}")
+                else:
+                    print("⚠️ No script text provided and no audio available for transcription, skipping subtitles")
+                
+                # Add subtitles to video if we have an SRT file
+                if srt_path and os.path.exists(srt_path):
+                    print(f"🎬 Adding subtitles to video using SRT: {srt_path}")
+                    subtitled_video_path = os.path.join(TEMP_DIR, f"final_video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
+                    subtitle_result = add_subtitles(video_path, srt_path, subtitled_video_path)
+                    
+                    if subtitle_result and os.path.exists(subtitle_result):
+                        print(f"✅ Subtitles added successfully: {subtitle_result}")
+                        final_video_path = subtitle_result
+                        if os.path.exists(video_path):
+                            os.remove(video_path)
+                        print("📝 Keeping SRT file for debugging purposes")
+                        # Note: Keeping SRT file instead of removing for debugging
+                    else:
+                        print("⚠️ Subtitle addition failed, using video without subtitles")
+                        # Clean up SRT file if subtitle addition failed
+                        if os.path.exists(srt_path):
+                            os.remove(srt_path)
+                else:
+                    print("📝 No SRT file available for subtitle addition")
+                        
+            except Exception as e:
+                print(f"⚠️ Subtitle processing failed: {e}, continuing without subtitles")
         
         # Upload to cloud
         upload_result = await upload_media(
@@ -436,6 +559,7 @@ async def create_video_from_components(
             resource_type="video",
             prompt=f"Video from components",            metadata={
                 "audio_file_id": request.audio_file_id,
+                "audio_url": audio_url,  # Store audio URL
                 "background_image_id": request.background_image_id,  # Keep for backward compatibility
                 "background_image_ids": background_ids,  # Multiple background support
                 "is_multi_scene": len(background_ids) > 1,

@@ -12,6 +12,7 @@ from schemas.subtitle import (
 )
 from services.subtitle_service import (
     generate_subtitles_from_audio,
+    generate_subtitles_from_script,
     update_subtitle_segments,
     apply_subtitles_to_video,
     get_available_subtitle_styles,
@@ -78,6 +79,34 @@ async def generate_subtitles_endpoint(
         if 'temp_audio' in locals() and os.path.exists(temp_audio):
             os.remove(temp_audio)
         raise HTTPException(status_code=500, detail=f"Failed to generate subtitles: {str(e)}")
+
+@router.post("/generate-from-script", response_model=SubtitleResponse)
+async def generate_subtitles_from_script_endpoint(
+    script_text: str = Form(...),
+    language: Optional[str] = Form("en"),
+    max_words_per_segment: Optional[int] = Form(5),
+    estimated_duration: Optional[float] = Form(30.0)
+):
+    """Generate subtitles from script text with estimated timing"""
+    try:
+        # Generate subtitles from script
+        subtitle_data = generate_subtitles_from_script(
+            script_text, 
+            language, 
+            max_words_per_segment,
+            estimated_duration
+        )
+        
+        return SubtitleResponse(
+            id=subtitle_data["id"],
+            segments=[SubtitleSegment(**seg) for seg in subtitle_data["segments"]],
+            language=subtitle_data["language"],
+            srt_url=subtitle_data["srt_url"],
+            total_duration=subtitle_data["total_duration"]
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate subtitles from script: {str(e)}")
 
 @router.get("/generate-from-script")
 async def generate_subtitles_from_script_endpoint(
