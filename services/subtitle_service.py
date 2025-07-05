@@ -61,6 +61,91 @@ SUBTITLE_STYLES = {
     }
 }
 
+def generate_subtitles_from_script(script_text: str, language: str = "en", max_words_per_segment: int = 5, estimated_duration: float = 30.0) -> Dict:
+    """
+    Generate subtitles from script text with estimated timing
+    
+    Args:
+        script_text: Script text to create subtitles from
+        language: Language code
+        max_words_per_segment: Maximum words per subtitle segment
+        estimated_duration: Estimated total duration in seconds
+        
+    Returns:
+        Dictionary containing subtitle data
+    """
+    try:
+        # Generate unique ID for this subtitle
+        subtitle_id = f"sub_script_{uuid4().hex[:8]}"
+        
+        # Split script into words
+        words = script_text.split()
+        if not words:
+            raise Exception("Empty script text")
+        
+        # Create segments with estimated timing
+        segments = []
+        segment_id = 1
+        total_words = len(words)
+        
+        # Calculate timing per word
+        words_per_second = total_words / estimated_duration
+        
+        for i in range(0, total_words, max_words_per_segment):
+            # Get words for this segment
+            segment_words = words[i:i + max_words_per_segment]
+            segment_text = " ".join(segment_words)
+            
+            # Calculate timing
+            start_time = i / words_per_second
+            end_time = min((i + len(segment_words)) / words_per_second, estimated_duration)
+            
+            # Ensure minimum segment duration
+            if end_time - start_time < 1.0:
+                end_time = start_time + 1.0
+            
+            segments.append({
+                "id": segment_id,
+                "start_time": round(start_time, 2),
+                "end_time": round(end_time, 2),
+                "text": segment_text.strip()
+            })
+            
+            segment_id += 1
+        
+        # Create SRT content
+        srt_content = ""
+        for seg in segments:
+            start_formatted = format_time_for_srt(seg["start_time"])
+            end_formatted = format_time_for_srt(seg["end_time"])
+            srt_content += f"{seg['id']}\n{start_formatted} --> {end_formatted}\n{seg['text']}\n\n"
+        
+        # Save SRT file
+        srt_file = os.path.join(TEMP_DIR, f"{subtitle_id}.srt")
+        with open(srt_file, "w", encoding="utf-8") as f:
+            f.write(srt_content)
+        
+        return {
+            "id": subtitle_id,
+            "segments": segments,
+            "language": language,
+            "srt_url": f"/media/subtitles/{subtitle_id}.srt",
+            "srt_file_path": srt_file,
+            "total_duration": estimated_duration,
+            "source": "script"
+        }
+        
+    except Exception as e:
+        raise Exception(f"Failed to generate subtitles from script: {str(e)}")
+
+def format_time_for_srt(seconds: float) -> str:
+    """Format time in seconds to SRT format (HH:MM:SS,mmm)"""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    millisecs = int((seconds % 1) * 1000)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{millisecs:03d}"
+
 SUPPORTED_LANGUAGES = ["en", "vi", "es", "fr", "de", "ja", "ko", "zh"]
 
 def generate_subtitles_from_audio(audio_file_path: str, language: str = "en", max_words_per_segment: int = 5) -> Dict:
@@ -83,16 +168,36 @@ def generate_subtitles_from_audio(audio_file_path: str, language: str = "en", ma
         srt_file = os.path.join(TEMP_DIR, f"{subtitle_id}.srt")
         
         # Transcribe audio and generate SRT
-        transcription = transcribe_audio(audio_file_path, srt_file, language)
+        transcription_text = transcribe_audio(audio_file_path, srt_file, language)
         
-        if not transcription.words:
-            raise Exception("No transcription data received")
+        if not transcription_text or not os.path.exists(srt_file):
+            raise Exception("No transcription data received or SRT file not created")
         
-        # Parse SRT file to get segments
+        # Get actual audio duration for validation
+        try:
+            from services.Media.media_utils import get_audio_duration
+            actual_audio_duration = get_audio_duration(audio_file_path)
+            print(f"🎵 Actual audio duration: {actual_audio_duration:.2f}s")
+        except Exception:
+            actual_audio_duration = 30  # Default fallback
+        
+        # Parse and validate SRT file
         segments = parse_srt_file(srt_file)
         
-        # Calculate total duration
-        total_duration = transcription.words[-1]['end'] if transcription.words else 0
+        if segments:
+            # Validate and correct timing
+            segments = validate_and_correct_timing(segments, actual_audio_duration)
+            
+            # Re-write corrected SRT file
+            corrected_srt_content = generate_srt_from_segments(segments)
+            with open(srt_file, "w", encoding="utf-8") as f:
+                f.write(corrected_srt_content)
+            print(f"✅ SRT timing corrected and saved: {srt_file}")
+            
+            total_duration = max(segment['end_time'] for segment in segments)
+        else:
+            print("⚠️ No valid segments found in SRT")
+            total_duration = actual_audio_duration
         
         return {
             "id": subtitle_id,
@@ -372,3 +477,88 @@ def format_srt_time(seconds: float) -> str:
     milliseconds = int((seconds % 1) * 1000)
     
     return f"{hours:02d}:{minutes:02d}:{secs:02d},{milliseconds:03d}"
+
+def validate_and_correct_timing(segments, actual_audio_duration):
+    """
+    Validate and correct subtitle timing to ensure it matches audio duration
+    
+    Args:
+        segments: List of subtitle segments with timing
+        actual_audio_duration: Actual duration of audio file
+        
+    Returns:
+        Corrected list of segments
+    """
+    if not segments:
+        return segments
+    
+    print(f"📊 Validating timing for {len(segments)} segments")
+    print(f"   Audio duration: {actual_audio_duration:.2f}s")
+    
+    # Check if timing is reasonable
+    last_end_time = max(segment['end_time'] for segment in segments)
+    print(f"   Last subtitle ends at: {last_end_time:.2f}s")
+    
+    # If subtitles extend way beyond audio, scale them down
+    if last_end_time > actual_audio_duration * 1.1:  # 10% tolerance
+        print(f"⚠️  Subtitles extend beyond audio, scaling down...")
+        scale_factor = actual_audio_duration / last_end_time
+        print(f"   Scale factor: {scale_factor:.3f}")
+        
+        for segment in segments:
+            segment['start_time'] *= scale_factor
+            segment['end_time'] *= scale_factor
+        
+        print(f"✅ Timing scaled to match audio duration")
+    
+    # Ensure no overlapping and minimum gaps
+    corrected_segments = []
+    for i, segment in enumerate(segments):
+        corrected_segment = segment.copy()
+        
+        # Ensure minimum duration
+        min_duration = 0.5  # 500ms minimum
+        duration = segment['end_time'] - segment['start_time']
+        if duration < min_duration:
+            corrected_segment['end_time'] = segment['start_time'] + min_duration
+        
+        # Ensure no overlap with next segment
+        if i < len(segments) - 1:
+            next_start = segments[i + 1]['start_time']
+            if corrected_segment['end_time'] > next_start - 0.1:  # 100ms gap
+                corrected_segment['end_time'] = next_start - 0.1
+        
+        # Ensure doesn't exceed audio duration
+        if corrected_segment['end_time'] > actual_audio_duration:
+            corrected_segment['end_time'] = actual_audio_duration
+        
+        # Final validation
+        if corrected_segment['start_time'] < corrected_segment['end_time']:
+            corrected_segments.append(corrected_segment)
+        else:
+            print(f"⚠️  Skipping invalid segment {i+1}: start >= end")
+    
+    print(f"✅ Validated {len(corrected_segments)}/{len(segments)} segments")
+    return corrected_segments
+
+def generate_srt_from_segments(segments):
+    """
+    Generate SRT content from segments
+    
+    Args:
+        segments: List of segments with timing and text
+        
+    Returns:
+        SRT formatted string
+    """
+    srt_content = ""
+    
+    for i, segment in enumerate(segments, 1):
+        start_time_str = format_srt_time(segment['start_time'])
+        end_time_str = format_srt_time(segment['end_time'])
+        
+        srt_content += f"{i}\n"
+        srt_content += f"{start_time_str} --> {end_time_str}\n"
+        srt_content += f"{segment['text']}\n\n"
+    
+    return srt_content

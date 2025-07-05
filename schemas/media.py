@@ -33,11 +33,19 @@ class VideoSettings(BaseModel):
     enable_transitions: bool = Field(default=True, description="Enable crossfade transitions between scenes")
     transition_duration: float = Field(default=0.5, ge=0.1, le=2.0, description="Duration of transitions in seconds")
 
+# Schema for voice settings
+class VoiceSettings(BaseModel):
+    speed: Optional[float] = Field(default=1.0, description="Voice speed (0.5-2.0)")
+    pitch: Optional[float] = Field(default=1.0, description="Voice pitch (0.5-2.0)")
+
 # Schema for complete video creation
 class CompleteVideoRequest(BaseModel):
     script_text: str = Field(..., description="Script content for the video")
     voice_id: Optional[str] = Field(None, description="ID of the voice to use (for AI voice)")
     audio_url: Optional[str] = Field(None, description="URL of uploaded audio file")
+    audio_source: Optional[str] = Field(None, description="Source of audio: 'uploaded', 'generated', 'voice_generation'")
+    uploaded_audio_id: Optional[str] = Field(None, description="ID of uploaded audio file")
+    voice_settings: Optional[VoiceSettings] = Field(None, description="Voice generation settings")
     background_image_id: str = Field(..., description="ID of the background image (legacy)")
     background_image_ids: Optional[List[str]] = Field(None, description="IDs of multiple background images")
     subtitle_enabled: bool = Field(default=True, description="Whether to enable subtitles")
