@@ -54,7 +54,8 @@ async def upload_video_to_youtube(user:User,upload_request:VideoUpLoadRequest)->
         social_video_data = SocialVideoCreate(
             user_id=str(user.id),
             platform=SocialPlatform.GOOGLE,
-            video_url=f'https://www.youtube.com/watch?v={video_id}'
+            video_id = upload_request.media_id,
+            video_url=video_id
         )
         await add_social_video(social_video_data)
         return f'https://www.youtube.com/watch?v={video_id}'

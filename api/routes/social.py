@@ -40,9 +40,9 @@ async def get_video_statstic(user:User =Depends(get_current_user),platform:str="
             detail=f"Failed to retrieve video statistics: {str(e)}"
         )
 @router.get("/social-video",response_model=Optional[dict])
-async def get_social_network_videos(user: User = Depends(get_current_user), platform: SocialPlatform = Query(...)):
+async def get_social_network_videos(user: User = Depends(get_current_user),video_id:str =Query(...), platform: SocialPlatform = Query(...)):
     try:
-        return await get_social_videos(user.id, platform)
+        return await get_social_videos(user.id, platform,video_id)
     except HTTPException as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

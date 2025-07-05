@@ -71,7 +71,9 @@ async def upload_video_to_facebook(user: User,page_id:str, upload_request: Video
         social_video_data = SocialVideoCreate(
             user_id=str(user.id),
             platform=SocialPlatform.FACEBOOK,
-            video_url=f"https://www.facebook.com/{video_id}"
+            video_id=upload_request.media_id,
+            video_url=video_id,
+            page_id=page_id
         )
         await add_social_video(social_video_data)
         return f"https://www.facebook.com/{video_id}"

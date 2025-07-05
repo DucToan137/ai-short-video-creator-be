@@ -8,7 +8,8 @@ PyObjectId = Annotated[str,BeforeValidator(str)]
 class Social(BaseModel):
     id: Optional[PyObjectId] = Field(default=None, alias="_id")
     user_id:str = Field(...)
-    facebook:Optional[List[str]] = Field(default_factory=list)
+    video_id: str = Field(...)
+    facebook:Optional[List[dict]] = Field(default_factory=dict)
     youtube:Optional[List[str]] = Field(default_factory=list)
     model_config =ConfigDict(
         populate_by_name=True,
@@ -17,5 +18,7 @@ class Social(BaseModel):
     )
 class SocialVideoCreate(BaseModel):
     user_id:str = Field(...)
+    video_id:str = Field(...)
     platform: str = Field(...)
     video_url: str = Field(...)
+    page_id: Optional[str] = Field(default=None)

@@ -10,11 +10,16 @@ async def add_social_video(social_create: SocialVideoCreate):
             if social_create.platform == SocialPlatform.FACEBOOK:
                 new_social = Social(
                     user_id=social_create.user_id,
-                    facebook=[social_create.video_url]
+                    video_id = social_create.video_id,
+                    facebook=[{
+                        "video_url": social_create.video_url,
+                        "page_id": social_create.page_id
+                    }]
                 )
             else:
                 new_social = Social(
                     user_id=social_create.user_id,
+                    video_id = social_create.video_id,
                     youtube=[social_create.video_url]
                 )
             await collection.insert_one(new_social.model_dump(by_alias=True,exclude={"id"}))
@@ -22,7 +27,10 @@ async def add_social_video(social_create: SocialVideoCreate):
             if social_create.platform == SocialPlatform.FACEBOOK:
                 if not exitsing_social.get('facebook'):
                     exitsing_social['facebook'] = []
-                exitsing_social['facebook'].append(social_create.video_url)
+                exitsing_social['facebook'].append({
+                        "video_url": social_create.video_url,
+                        "page_id": social_create.page_id
+                    })
             else:
                 if not exitsing_social.get('youtube'):
                     exitsing_social['youtube'] = []
@@ -33,9 +41,9 @@ async def add_social_video(social_create: SocialVideoCreate):
             )
     except Exception as e:
         print(f"Error adding social video: {e}")
-async def get_social_videos(user_id: str, platform: SocialPlatform) -> dict | None:
+async def get_social_videos(user_id: str, platform: SocialPlatform,video_id:str) -> dict | None:
     try:
-        social = await collection.find_one({"user_id": user_id})
+        social = await collection.find_one({"user_id": user_id,"video_id": video_id})
         if not social:
             return None
         if platform == SocialPlatform.FACEBOOK:
