@@ -10,9 +10,9 @@ from bson import ObjectId
 from services.voice_service import get_voice_by_id
 from api.deps import get_current_user
 from models.user import User
-from services.Media.media_utils import create_video, create_multi_scene_video, add_subtitles, upload_media, get_media_by_id
+from services.Media.media_utils import create_video, create_multi_scene_video, upload_media, get_media_by_id
 from services.Media.text_to_speech import generate_speech_async
-from services.subtitle_service import generate_srt_content, generate_subtitles_from_audio
+from services.subtitle_service import generate_srt_content, generate_subtitles_from_audio, add_subtitles
 from config import TEMP_DIR
 from schemas.media import MediaResponse, CompleteVideoRequest, VideoFromComponentsRequest
 from models.user import User
@@ -213,23 +213,22 @@ async def create_complete_video(
             raise HTTPException(status_code=500, detail="Failed to create video")
         
         final_video_path = video_result
-          # Step 4: Add subtitles if enabled
+          # Step 4: Add subtitles if enabled (only from audio transcription)
         if request.subtitle_enabled:
             print("Adding subtitles to video...")
             try:
                 srt_path = None
                 
-                # Check if we have uploaded audio and should generate subtitles from audio
-                if hasattr(request, 'audio_source') and request.audio_source == "uploaded" and audio_path:
-                    print("🎤 Generating subtitles from uploaded audio...")
+                if audio_path:
+                    print("🎤 Generating subtitles from audio transcription...")
                     try:
-                        # Generate subtitles from audio transcription
+                        # Always generate subtitles from audio transcription
                         print(f"🎵 Audio file for transcription: {audio_path}")
-                        print(f"🌐 Subtitle language: {request.subtitle_language}")
+                        print(f"� Subtitle style: {request.subtitle_style}")
                         
                         subtitle_data = generate_subtitles_from_audio(
                             audio_path, 
-                            language=request.subtitle_language
+                            language="auto"  # Auto-detect language from audio
                         )
                         srt_path = subtitle_data["srt_file_path"]
                         print(f"📝 SRT file generated from audio: {srt_path}")
@@ -246,45 +245,22 @@ async def create_complete_video(
                                 
                     except Exception as audio_error:
                         print(f"⚠️ Failed to generate subtitles from audio: {audio_error}")
-                        # Fallback to script text if available
-                        if request.script_text:
-                            print("📝 Falling back to generating subtitles from script text...")
-                            from services.Media.media_utils import get_audio_duration
-                            actual_duration = get_audio_duration(audio_path)
-                            print(f"🎵 Detected audio duration: {actual_duration:.2f}s")
-                            
-                            srt_content = generate_srt_content(request.script_text, actual_duration)
-                            srt_path = os.path.join(TEMP_DIR, f"subtitles_{datetime.now().strftime('%Y%m%d_%H%M%S')}.srt")
-                            with open(srt_path, "w", encoding="utf-8") as f:
-                                f.write(srt_content)
-                            print(f"📝 SRT file created from script: {srt_path}")
-                        else:
-                            print("⚠️ No script text available for fallback")
-                            srt_path = None
-                    
-                elif request.script_text:
-                    print("📝 Generating subtitles from script text...")
-                    # Generate SRT content from script with proper timing
-                    from services.Media.media_utils import get_audio_duration
-                    actual_duration = get_audio_duration(audio_path)
-                    print(f"🎵 Detected audio duration: {actual_duration:.2f}s")
-                    
-                    srt_content = generate_srt_content(request.script_text, actual_duration)
-                    
-                    # Save SRT to temp file
-                    srt_path = os.path.join(TEMP_DIR, f"subtitles_{datetime.now().strftime('%Y%m%d_%H%M%S')}.srt")
-                    with open(srt_path, "w", encoding="utf-8") as f:
-                        f.write(srt_content)
-                    print(f"📝 SRT file created from script: {srt_path}")
+                        print("❌ Subtitle generation failed, continuing without subtitles")
+                        srt_path = None
                 else:
-                    print("⚠️ No script text provided and audio source is not uploaded, skipping subtitles")
+                    print("⚠️ No audio file available for subtitle generation")
                     srt_path = None
                 
                 # Add subtitles to video if we have an SRT file
                 if srt_path and os.path.exists(srt_path):
                     print(f"🎬 Adding subtitles to video using SRT: {srt_path}")
+                    
+                    # Use full subtitle style object from request (first function - create_complete_video)
+                    subtitle_style = request.subtitle_style or "default"
+                    print(f"🎨 Using subtitle style: {type(subtitle_style)} - {subtitle_style}")
+                    
                     subtitled_video_path = os.path.join(TEMP_DIR, f"final_video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
-                    subtitle_result = add_subtitles(video_path, srt_path, subtitled_video_path)
+                    subtitle_result = add_subtitles(video_path, srt_path, subtitled_video_path, subtitle_style)
                     
                     if subtitle_result and os.path.exists(subtitle_result):
                         print(f"✅ Subtitles added successfully: {subtitle_result}")
@@ -331,9 +307,9 @@ async def create_complete_video(
                 "is_multi_scene": len(background_ids) > 1,
                 "scene_count": len(background_ids),
                 "subtitle_enabled": request.subtitle_enabled,
-                "subtitle_language": request.subtitle_language,
+                "subtitle_language": "auto_detected",  # Always auto-detect from audio
                 "subtitle_style": subtitle_style_str,
-                "subtitle_status": "generated_from_audio" if (hasattr(request, 'audio_source') and request.audio_source == "uploaded" and srt_path) else "generated_from_script" if srt_path else "disabled",
+                "subtitle_status": "generated_from_audio" if srt_path else "disabled",
                 "script_text": request.script_text[:200] if request.script_text else None  # Save partial script for reference
             }
         )        # Clean up temporary files
@@ -482,56 +458,40 @@ async def create_video_from_components(
         
         final_video_path = video_result
         
-        # Add subtitles if enabled
+        # Add subtitles if enabled (only from audio transcription)
         if request.subtitle_enabled:
             print("Adding subtitles to video...")
             try:
                 srt_path = None
                 
-                # For components endpoint, always try to generate subtitles from uploaded audio first
                 if audio_path:
-                    print("🎤 Generating subtitles from uploaded audio...")
+                    print("🎤 Generating subtitles from audio transcription...")
                     try:
-                        # Generate subtitles from audio transcription
+                        # Always generate subtitles from audio transcription
                         subtitle_data = generate_subtitles_from_audio(
                             audio_path, 
-                            language=request.subtitle_language
+                            language="auto"  # Auto-detect language from audio
                         )
                         srt_path = subtitle_data["srt_file_path"]
                         print(f"📝 SRT file generated from audio: {srt_path}")
                     except Exception as audio_subtitle_error:
                         print(f"⚠️ Failed to generate subtitles from audio: {audio_subtitle_error}")
-                        # Fallback to script text if available
-                        if request.script_text:
-                            print("📝 Falling back to generating subtitles from script text...")
-                            from services.Media.media_utils import get_audio_duration
-                            actual_duration = get_audio_duration(audio_path)
-                            print(f"🎵 Detected audio duration: {actual_duration:.2f}s")
-                            
-                            srt_content = generate_srt_content(request.script_text, actual_duration)
-                            srt_path = os.path.join(TEMP_DIR, f"subtitles_{datetime.now().strftime('%Y%m%d_%H%M%S')}.srt")
-                            with open(srt_path, "w", encoding="utf-8") as f:
-                                f.write(srt_content)
-                            print(f"📝 SRT file created from script: {srt_path}")
-                elif request.script_text:
-                    print("📝 Generating subtitles from script text...")
-                    from services.Media.media_utils import get_audio_duration
-                    actual_duration = get_audio_duration(audio_path)
-                    print(f"🎵 Detected audio duration: {actual_duration:.2f}s")
-                    
-                    srt_content = generate_srt_content(request.script_text, actual_duration)
-                    srt_path = os.path.join(TEMP_DIR, f"subtitles_{datetime.now().strftime('%Y%m%d_%H%M%S')}.srt")
-                    with open(srt_path, "w", encoding="utf-8") as f:
-                        f.write(srt_content)
-                    print(f"📝 SRT file created from script: {srt_path}")
+                        print("❌ Subtitle generation failed, continuing without subtitles")
+                        srt_path = None
                 else:
-                    print("⚠️ No script text provided and no audio available for transcription, skipping subtitles")
+                    print("⚠️ No audio file available for subtitle generation")
+                    srt_path = None
                 
                 # Add subtitles to video if we have an SRT file
                 if srt_path and os.path.exists(srt_path):
                     print(f"🎬 Adding subtitles to video using SRT: {srt_path}")
+                    
+                    # Use full subtitle style object from request (second function - create_video_from_existing_content)
+                    subtitle_style = request.subtitle_style or "default"
+                    print(f"🎨 Using subtitle style: {type(subtitle_style)} - {subtitle_style}")
+                    
                     subtitled_video_path = os.path.join(TEMP_DIR, f"final_video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
-                    subtitle_result = add_subtitles(video_path, srt_path, subtitled_video_path)
+                    subtitle_result = add_subtitles(video_path, srt_path, subtitled_video_path, subtitle_style)
                     
                     if subtitle_result and os.path.exists(subtitle_result):
                         print(f"✅ Subtitles added successfully: {subtitle_result}")

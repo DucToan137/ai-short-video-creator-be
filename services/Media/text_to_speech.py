@@ -130,7 +130,7 @@ async def generate_speech_async(text: str, voice_id: str = DEFAULT_VOICE, user_i
                 audio_path,
                 user_id,
                 folder="audio",
-                resource_type="video",  # For audio files
+                resource_type="auto",  # Let Cloudinary auto-detect format for audio
                 prompt=f"Generated speech: {text[:100]}{'...' if len(text) > 100 else ''}",
                 metadata={
                     "voice_id": voice_id,

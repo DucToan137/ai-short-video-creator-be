@@ -2,9 +2,10 @@ from typing import List, Dict, Optional
 import os
 import json
 import re
+import subprocess
 from uuid import uuid4
 from services.Media.speech_to_text import transcribe_audio, convert_to_srt
-from services.Media.media_utils import add_subtitles
+from services.Media.media_utils import validate_srt_file, fix_srt_format, ffmpeg_path
 from config import TEMP_DIR
 
 # Predefined subtitle styles
@@ -34,7 +35,7 @@ SUBTITLE_STYLES = {
         "font_size": 14,
         "font_color": "#FFFFFF",
         "background_color": "transparent",
-        "background_opacity": 0.0,
+        "background_opacity": 0.7,
         "position": "bottom",
         "outline": True,
         "outline_color": "#000000"
@@ -58,8 +59,39 @@ SUBTITLE_STYLES = {
         "position": "bottom",
         "outline": False,
         "outline_color": "#000000"
+    },
+    "gaming": {
+        "font_family": "Arial Black",
+        "font_size": 18,
+        "font_color": "#00FF00",
+        "background_color": "#000000",
+        "background_opacity": 0.8,
+        "position": "bottom",
+        "outline": True,
+        "outline_color": "#003300"
+    },
+    "cinematic": {
+        "font_family": "Georgia",
+        "font_size": 16,
+        "font_color": "#FFD700",
+        "background_color": "#1A1A1A",
+        "background_opacity": 0.9,
+        "position": "bottom",
+        "outline": True,
+        "outline_color": "#333333"
+    },
+    "neon": {
+        "font_family": "Arial",
+        "font_size": 17,
+        "font_color": "#00FFFF",
+        "background_color": "#000033",
+        "background_opacity": 0.7,
+        "position": "bottom",
+        "outline": True,
+        "outline_color": "#0066CC"
     }
 }
+
 
 def generate_subtitles_from_script(script_text: str, language: str = "en", max_words_per_segment: int = 5, estimated_duration: float = 30.0) -> Dict:
     """
@@ -148,14 +180,14 @@ def format_time_for_srt(seconds: float) -> str:
 
 SUPPORTED_LANGUAGES = ["en", "vi", "es", "fr", "de", "ja", "ko", "zh"]
 
-def generate_subtitles_from_audio(audio_file_path: str, language: str = "en", max_words_per_segment: int = 5) -> Dict:
+def generate_subtitles_from_audio(audio_file_path: str, language: str = "auto", max_words_per_segment: int = 5) -> Dict:
     """
-    Generate subtitles from audio file
+    Generate subtitles from audio file with automatic language detection
     
     Args:
         audio_file_path: Path to audio file
-        language: Audio language code
-        max_words_per_segment: Maximum words per subtitle segment
+        language: Audio language code or "auto" for auto-detection
+        max_words_per_segment: Maximum words per subtitle segment (unused, kept for compatibility)
         
     Returns:
         Dictionary containing subtitle data
@@ -167,8 +199,15 @@ def generate_subtitles_from_audio(audio_file_path: str, language: str = "en", ma
         # Create SRT file path
         srt_file = os.path.join(TEMP_DIR, f"{subtitle_id}.srt")
         
+        # Auto-detect language if specified
+        actual_language = language
+        if language == "auto":
+            print("🌐 Auto-detecting language from audio...")
+            # Let the transcription service handle auto-detection
+            actual_language = None  # Pass None to enable auto-detection
+        
         # Transcribe audio and generate SRT
-        transcription_text = transcribe_audio(audio_file_path, srt_file, language)
+        transcription_text = transcribe_audio(audio_file_path, srt_file, actual_language)
         
         if not transcription_text or not os.path.exists(srt_file):
             raise Exception("No transcription data received or SRT file not created")
@@ -369,6 +408,249 @@ def apply_subtitles_to_video(video_file_path: str, subtitle_id: str, style: Dict
         
     except Exception as e:
         raise Exception(f"Failed to apply subtitles: {str(e)}")
+    
+    
+def convert_hex_to_ass(hex_color: str) -> str:
+    """Convert hex color to ASS format (BGR)"""
+    if not hex_color.startswith('#'):
+        hex_color = '#' + hex_color
+    # Remove '#' and convert to BGR format for ASS
+    r = int(hex_color[1:3], 16)
+    g = int(hex_color[3:5], 16)
+    b = int(hex_color[5:7], 16)
+    return f"&H{b:02x}{g:02x}{r:02x}"
+    
+def get_ffmpeg_subtitle_style(style_input="default") -> str:
+    """
+    Convert subtitle style to FFmpeg subtitle filter parameters
+    
+    Args:
+        style_input: Style name (string) or SubtitleStyle object
+        
+    Returns:
+        FFmpeg force_style parameter string
+    """
+    print(f"🎨 Processing style input: {type(style_input)} - {style_input}")
+    
+    # Handle both string style name and SubtitleStyle object
+    if isinstance(style_input, str):
+        # String style name - lookup in predefined styles
+        style_name = style_input
+        if style_name not in SUBTITLE_STYLES:
+            print(f"⚠️ Unknown subtitle style '{style_name}', using 'default'")
+            style_name = "default"
+        style = SUBTITLE_STYLES[style_name]
+        print(f"🎨 Using predefined style: {style_name}")
+    elif hasattr(style_input, 'fontFamily') or hasattr(style_input, 'font_family'):
+        # SubtitleStyle object from frontend
+        style = {
+            "font_family": getattr(style_input, 'fontFamily', getattr(style_input, 'font_family', 'Arial')),
+            "font_size": getattr(style_input, 'fontSize', getattr(style_input, 'font_size', 16)),
+            "font_color": getattr(style_input, 'fontColor', getattr(style_input, 'font_color', '#FFFFFF')),
+            "background_color": getattr(style_input, 'backgroundColor', getattr(style_input, 'background_color', '#000000')),
+            "background_opacity": getattr(style_input, 'backgroundOpacity', getattr(style_input, 'background_opacity', 0.7)),
+            "position": getattr(style_input, 'position', 'bottom'),
+            "outline": getattr(style_input, 'outline', True),
+            "outline_color": getattr(style_input, 'outlineColor', getattr(style_input, 'outline_color', '#000000'))
+        }
+        print(f"🎨 Using custom style object: {getattr(style_input, 'name', 'custom')}")
+    elif isinstance(style_input, dict):
+        # Dictionary style object
+        style = {
+            "font_family": style_input.get('fontFamily', style_input.get('font_family', 'Arial')),
+            "font_size": style_input.get('fontSize', style_input.get('font_size', 16)),
+            "font_color": style_input.get('fontColor', style_input.get('font_color', '#FFFFFF')),
+            "background_color": style_input.get('backgroundColor', style_input.get('background_color', '#000000')),
+            "background_opacity": style_input.get('backgroundOpacity', style_input.get('background_opacity', 0.7)),
+            "position": style_input.get('position', 'bottom'),
+            "outline": style_input.get('outline', True),
+            "outline_color": style_input.get('outlineColor', style_input.get('outline_color', '#000000'))
+        }
+        print(f"🎨 Using dictionary style: {style_input.get('name', 'custom')}")
+    else:
+        print(f"⚠️ Invalid style input type: {type(style_input)}, using 'default'")
+        style = SUBTITLE_STYLES["default"]
+    
+    print(f"📝 Final style config: {style}")
+    
+    # Convert hex colors to ASS format (BGR)
+    primary_color = convert_hex_to_ass(style["font_color"])
+    back_color = convert_hex_to_ass(style["background_color"])
+    outline_color = convert_hex_to_ass(style["outline_color"])
+    
+    # Calculate background alpha (0-255, where 0 is fully opaque, 255 is fully transparent)
+    bg_alpha = int((1.0 - style["background_opacity"]) * 255)
+    
+    # Build force_style string
+    force_style_parts = [
+        f"FontName={style['font_family']}",
+        f"FontSize={style['font_size']}",
+        f"PrimaryColour={primary_color}",
+        f"BackColour={back_color}",
+        f"BackgroundAlpha=&H{bg_alpha:02x}",
+    ]
+    
+    # Add outline if enabled
+    if style["outline"]:
+        force_style_parts.extend([
+            "OutlineColour=" + outline_color,
+            "Outline=1"
+        ])
+    else:
+        force_style_parts.append("Outline=0")
+    
+    # Position mapping
+    alignment_map = {
+        "top": "8",      # Top center
+        "middle": "5",   # Middle center
+        "bottom": "2"    # Bottom center
+    }
+    alignment = alignment_map.get(style["position"], "2")
+    force_style_parts.append(f"Alignment={alignment}")
+    
+    force_style_string = ",".join(force_style_parts)
+    print(f"🎨 Generated FFmpeg style: {force_style_string}")
+    
+    return force_style_string
+
+
+def add_subtitles(video_path, subtitle_path, output_path=None, subtitle_style="default"):
+    """Add subtitles to a video using FFmpeg with improved error handling and custom styling"""
+    if not output_path:
+        output_path = os.path.join(TEMP_DIR, f"sub_{os.path.basename(video_path)}")
+    
+    print(f"🎬 Adding subtitles:")
+    print(f"   Video: {video_path} (exists: {os.path.exists(video_path)})")
+    print(f"   Subtitles: {subtitle_path} (exists: {os.path.exists(subtitle_path)})")
+    print(f"   Output: {output_path}")
+    print(f"   Style: {subtitle_style}")
+    
+    # Validate inputs
+    if not os.path.exists(video_path):
+        raise Exception(f"Video file not found: {video_path}")
+    if not os.path.exists(subtitle_path):
+        raise Exception(f"Subtitle file not found: {subtitle_path}")
+    
+    try:
+        # Check if FFmpeg is available
+        if not os.path.exists(ffmpeg_path):
+            raise Exception(f"FFmpeg not found at: {ffmpeg_path}")
+        
+        # Convert paths to absolute paths with forward slashes for FFmpeg
+        video_path_abs = video_path.replace('\\', '/')
+        subtitle_path_abs = subtitle_path.replace('\\', '/')
+        output_path_abs = output_path.replace('\\', '/')
+        
+        # Validate subtitle file format
+        if not validate_srt_file(subtitle_path):
+            print("⚠️  Invalid SRT format, attempting to fix...")
+            fixed_srt_path = fix_srt_format(subtitle_path)
+            if fixed_srt_path:
+                subtitle_path_abs = os.path.abspath(fixed_srt_path).replace('\\', '/')
+            else:
+                raise Exception("Could not fix SRT format")
+        
+        # Get FFmpeg style string for the selected style
+        ffmpeg_style = get_ffmpeg_subtitle_style(subtitle_style)
+        
+        # Build FFmpeg command with custom subtitle styling
+        command = [
+            ffmpeg_path,
+            "-i", video_path_abs,  # Input video
+            "-vf", f"subtitles='{subtitle_path_abs}':force_style='{ffmpeg_style}'",  # Subtitle filter with custom styling
+            "-c:a", "copy",  # Copy audio without re-encoding
+            "-c:v", "libx264",  # Re-encode video for subtitle embedding
+            "-preset", "fast",  # Fast encoding preset
+            "-crf", "23",  # Good quality
+            "-y",  # Overwrite output file if it exists
+            output_path_abs  # Output video
+        ]
+
+        print(f"🔧 FFmpeg command: {' '.join(command)}")
+        
+        # Run with timeout and better error capture
+        result = subprocess.run(
+            command, 
+            check=True, 
+            capture_output=True, 
+            text=True, 
+            timeout=300,  # 5 minute timeout
+            encoding='utf-8',  # Force UTF-8 encoding
+            errors='replace'  # Replace problematic characters
+        )
+        
+        # Verify output file was created and has reasonable size
+        if os.path.exists(output_path):
+            output_size = os.path.getsize(output_path)
+            if output_size > 1000:  # At least 1KB
+                print(f"✅ Subtitles added successfully: {output_path}")
+                print(f"   Output size: {output_size:,} bytes ({output_size/1024/1024:.2f} MB)")
+                return output_path
+            else:
+                raise Exception(f"Output file too small: {output_size} bytes")
+        else:
+            raise Exception("Output file was not created")
+            
+    except subprocess.TimeoutExpired:
+        print("❌ FFmpeg timeout - subtitle processing took too long")
+        return None
+    except subprocess.CalledProcessError as e:
+        print(f"❌ FFmpeg error: {e}")
+        if e.stderr:
+            print(f"   FFmpeg stderr: {e.stderr}")
+        if e.stdout:
+            print(f"   FFmpeg stdout: {e.stdout}")
+        
+        # Try alternative method with simpler subtitle embedding
+        print("🔄 Trying alternative subtitle method...")
+        return add_subtitles_alternative(video_path, subtitle_path, output_path, subtitle_style)
+        
+    except Exception as e:
+        print(f"❌ Error adding subtitles: {e}")
+        return None
+
+def add_subtitles_alternative(video_path, subtitle_path, output_path, subtitle_style="default"):
+    """Alternative subtitle method using different FFmpeg approach"""
+    try:
+        video_path_abs = os.path.abspath(video_path).replace('\\', '/')
+        subtitle_path_abs = os.path.abspath(subtitle_path).replace('\\', '/')
+        output_path_abs = os.path.abspath(output_path).replace('\\', '/')
+        
+        # Get style string (simpler version for fallback)
+        ffmpeg_style = get_ffmpeg_subtitle_style(subtitle_style)
+        
+        # Simpler command with styling
+        command = [
+            ffmpeg_path,
+            "-i", video_path_abs,
+            "-vf", f"subtitles={subtitle_path_abs}:force_style='{ffmpeg_style}'",  # Include styling in fallback
+            "-c:a", "copy",
+            "-y",
+            output_path_abs
+        ]
+        
+        print(f"🔄 Alternative command: {' '.join(command)}")
+        
+        result = subprocess.run(
+            command, 
+            check=True, 
+            capture_output=True, 
+            text=True, 
+            timeout=300,
+            encoding='utf-8',
+            errors='replace'
+        )
+        
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
+            print(f"✅ Alternative subtitle method successful: {output_path}")
+            return output_path
+        else:
+            print("❌ Alternative method also failed")
+            return None
+            
+    except Exception as e:
+        print(f"❌ Alternative subtitle method failed: {e}")
+        return None
 
 def get_available_subtitle_styles() -> List[Dict]:
     """Get list of available subtitle styles"""
