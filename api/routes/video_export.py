@@ -45,6 +45,7 @@ async def upload_edited_video(
     description: Optional[str] = Form(""),
     processing_steps: Optional[str] = Form("[]"),  # JSON string of processing steps
     timeline_data: Optional[str] = Form("{}"),  # JSON string of timeline state
+    quality: Optional[str] = Form("high"),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -68,13 +69,14 @@ async def upload_edited_video(
             content = await video_file.read()
             f.write(content)
         
-        # Upload to Cloudinary with enhanced metadata
+        # Upload to Cloudinary with enhanced metadata (always 1080p quality)
         upload_result = await upload_media(
             file_path=temp_video_path,
             user_id=user_id,
             folder="videos/edited",
             resource_type="video",
             prompt=f"Edited: {title}",
+            quality="high",
             metadata={
                 "original_video_id": original_video_id,
                 "is_edited": True,

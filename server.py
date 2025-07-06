@@ -1,7 +1,8 @@
 #python -m fastapi dev .\server.py
 #python -m uvicorn main:api --reload
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from api.routes.media_generation import router as media_generation_router
 from api.routes.auth import router as auth_router
 from api.routes.social import router as social_router
@@ -28,13 +29,31 @@ logger = logging.getLogger(__name__)
 async def lifespan(app:FastAPI):
     await test_connection()
     yield
-# Create FastAPI app
+
 api = FastAPI(
     title="Media Processing API",
     description="API for processing media files with AI",
     version="1.0.0",
     lifespan=lifespan, 
 )
+
+@api.middleware("http")
+async def log_request_size(request: Request, call_next):
+    start_time = time.time()
+    content_length = request.headers.get("content-length", "0")
+    
+    if int(content_length) > 0:
+        size_mb = int(content_length) / (1024 * 1024)
+        logger.info(f"Request size: {size_mb:.2f} MB for {request.method} {request.url.path}")
+    
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    
+    if int(content_length) > 1024 * 1024:  # Log for requests > 1MB
+        logger.info(f"Large request processed in {process_time:.2f}s")
+    
+    return response
+
 # Add CORS middleware
 api.add_middleware(
     CORSMiddleware,
@@ -57,10 +76,21 @@ api.include_router(video_router)
 api.include_router(facebook_pages_router)
 api.include_router(video_export_router)
 
-# Request logging middleware
+# Request logging middleware với check file size
 @api.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
+    
+    # Check content length for upload requests
+    if request.method == "POST" and request.url.path.startswith("/api/video/upload"):
+        content_length = request.headers.get("content-length")
+        if content_length:
+            size_mb = int(content_length) / (1024 * 1024)
+            if size_mb > 10:  # 10MB limit
+                logger.warning(f"Large upload detected: {size_mb:.2f}MB to {request.url.path}")
+            else:
+                logger.info(f"Upload size: {size_mb:.2f}MB to {request.url.path}")
+    
     response = await call_next(request)
     process_time = time.time() - start_time
     logger.info(f"{request.method} {request.url.path} - {response.status_code} - {process_time:.4f}s")
@@ -74,5 +104,14 @@ def index():
     }
 
 if __name__ == "__main__":
-    uvicorn.run("server:api", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run(
+        "server:api", 
+        host="127.0.0.1", 
+        port=8000, 
+        reload=True,
+        # Increase limits for video uploads
+        limit_max_requests=1000,
+        limit_concurrency=100,
+        timeout_keep_alive=30
+    )
     

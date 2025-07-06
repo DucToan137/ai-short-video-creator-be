@@ -16,7 +16,7 @@ import httpx
 media_colt = media_collection()
 ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
 async def upload_media(file_path: str, user_id: str, folder: str = "media", resource_type: str = "auto", 
-                 prompt: str = None, metadata: Dict = None) -> Dict:
+                 prompt: str = None, metadata: Dict = None, quality: str = "high") -> Dict:
     """
     Upload media to Cloudinary and save metadata to MongoDB
     
@@ -35,15 +35,61 @@ async def upload_media(file_path: str, user_id: str, folder: str = "media", reso
     if not prompt:
         prompt = os.path.basename(file_path)
     
-    # Upload to Cloudinary
+    # Upload to Cloudinary with high quality settings
     try:
+        upload_options = {
+            "folder": folder,
+            "resource_type": resource_type,
+            "unique_filename": True
+        }
+        
+        # For video uploads, use quality-based settings
+        if resource_type == "video":
+            # Quality-based settings for Cloudinary
+            quality_settings = {
+                "high": {
+                    "quality": "auto:best",
+                    "bit_rate": "2m",
+                    "video_codec": "h264",
+                    "audio_codec": "aac",
+                    "audio_frequency": 44100
+                },
+                "medium": {
+                    "quality": "auto:good",
+                    "bit_rate": "1m",
+                    "video_codec": "h264",
+                    "audio_codec": "aac",
+                    "audio_frequency": 44100
+                },
+                "low": {
+                    "quality": "auto:low",
+                    "bit_rate": "500k",
+                    "video_codec": "h264",
+                    "audio_codec": "aac",
+                    "audio_frequency": 22050
+                }
+            }
+            
+            selected_quality = quality_settings.get(quality, quality_settings["high"])
+            
+            upload_options.update({
+                **selected_quality,
+                "eager": [
+                    {
+                        "format": "mp4",
+                        **selected_quality
+                    }
+                ],
+                "eager_async": False  # Wait for processing to complete
+            })
+            
+            print(f"Using {quality} quality settings for video upload: {selected_quality}")
+        
         upload_result = cloudinary.uploader.upload(
             file_path,
-            folder=folder,
-            resource_type=resource_type,
-            unique_filename=True
+            **upload_options
         )
-        print(f"Uploaded {file_path} to Cloudinary")
+        print(f"Uploaded {file_path} to Cloudinary with high quality settings")
     except Exception as e:
         raise Exception(f"Failed to upload media to Cloudinary: {str(e)}")
 
