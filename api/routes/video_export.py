@@ -75,7 +75,7 @@ async def upload_edited_video(
             user_id=user_id,
             folder="videos/edited",
             resource_type="video",
-            prompt=f"Edited: {title}",
+            title=title,
             quality="high",
             metadata={
                 "original_video_id": original_video_id,

@@ -16,7 +16,7 @@ import httpx
 media_colt = media_collection()
 ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
 async def upload_media(file_path: str, user_id: str, folder: str = "media", resource_type: str = "auto", 
-                 prompt: str = None, metadata: Dict = None, quality: str = "high") -> Dict:
+                 prompt: str = None, metadata: Dict = None, quality: str = "high", title: str = None) -> Dict:
     """
     Upload media to Cloudinary and save metadata to MongoDB
     
@@ -128,7 +128,7 @@ async def upload_media(file_path: str, user_id: str, folder: str = "media", reso
     # Create media document
     media_doc = MediaModel(
         user_id=str(user_id_obj),  # Store as string in Pydantic model
-        title=upload_result.get("original_filename", "Untitled"),
+        title=title or upload_result.get("original_filename", "Untitled"),
         content=prompt,
         media_type=media_type,
         url=upload_result["secure_url"],
