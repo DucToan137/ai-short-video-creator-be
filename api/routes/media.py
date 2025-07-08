@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, File, UploadFile, Form
 from typing import Optional
-from schemas import MediaCreate, MediaUpdate, MediaResponse, MediaListResponse, MediaDelete
-from services import get_media_by_id, get_media_by_user, update_media, delete_media, upload_media
+from schemas import MediaCreate, MediaUpdate, MediaResponse, MediaListResponse, MediaDelete, VideoStatsResponse
+from services import get_media_by_id, get_media_by_user, get_all_media_by_user, update_media, delete_media, upload_media, get_video_stats_by_month
 from api.deps import get_current_user
 from models.media import MediaType
 import os
@@ -233,3 +233,66 @@ async def debug_all_user_media(
     except Exception as e:
         print(f"Error in debug endpoint: {e}")
         raise HTTPException(status_code=500, detail=f"Debug error: {str(e)}")
+
+@router.get("/videos/all", response_model=MediaListResponse)
+async def get_all_videos_of_user(
+    page: int = Query(1, ge=1, description="Page number"),
+    size: int = Query(12, ge=1, le=100, description="Page size"),
+    current_user = Depends(get_current_user)
+):
+  
+    result = await get_all_media_by_user(str(current_user.id), MediaType.VIDEO)
+    
+    if not result.get("media"):
+        return MediaListResponse(
+            media=[],
+            total=0,
+            page=page,
+            size=size,
+            has_next=False
+        )
+
+    all_valid_videos = []
+    invalid_videos = []
+    
+    for i, media in enumerate(result["media"], 1):
+  
+        if is_valid_video_media(media):
+            all_valid_videos.append(MediaResponse(**media))
+        else:
+            invalid_videos.append(media)
+
+    start_idx = (page - 1) * size
+    end_idx = start_idx + size
+    
+    video_responses = all_valid_videos[start_idx:end_idx]
+    
+    has_next = end_idx < len(all_valid_videos)
+    
+    return MediaListResponse(
+        media=video_responses,
+        total=len(all_valid_videos),  
+        page=page,
+        size=size,
+        has_next=has_next
+    )
+
+@router.get("/video/stats", response_model=VideoStatsResponse)
+async def get_video_statistics(
+    year: Optional[int] = Query(None, description="Year to get statistics for (defaults to current year)"),
+    month: Optional[int] = Query(None, ge=1, le=12, description="Specific month to get statistics for (1-12)"),
+    current_user = Depends(get_current_user)
+):
+
+    try:
+        user_id = str(current_user.id)
+        stats = await get_video_stats_by_month(user_id, year, month)
+        
+        return VideoStatsResponse(**stats)
+        
+    except Exception as e:
+        print(f"Error getting video statistics: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to get video statistics: {str(e)}"
+        )

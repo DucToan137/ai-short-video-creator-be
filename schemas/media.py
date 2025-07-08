@@ -83,8 +83,27 @@ class MediaListResponse(BaseModel):
     total: int
     page: int
     size: int
+    has_next: bool = Field(default=False, description="Whether there are more pages")
 
 # Schema for deleting media
 class MediaDelete(BaseModel):
     success: bool = Field(..., description="Whether deletion was successful")
     message: str = Field(..., description="Deletion message")
+
+# Schema for video statistics response
+class MonthlyVideoStats(BaseModel):
+    month: int = Field(..., description="Month number (1-12)")
+    total_videos: int = Field(..., description="Total videos in this month")
+    total_views: int = Field(..., description="Total views in this month")
+    total_duration: float = Field(..., description="Total duration in seconds")
+    video_count: int = Field(..., description="Number of videos")
+
+class VideoStatsResponse(BaseModel):
+    year: int = Field(..., description="Year of the statistics")
+    month: Optional[int] = Field(None, description="Specific month (if querying single month)")
+    total_videos: int = Field(..., description="Total videos")
+    total_views: int = Field(..., description="Total views")
+    total_duration: float = Field(..., description="Total duration in seconds")
+    monthly_breakdown: Optional[Dict[int, MonthlyVideoStats]] = Field(None, description="Monthly breakdown")
+    videos_this_month: Optional[int] = Field(None, description="Videos created this month")
+    videos: Optional[List[Dict]] = Field(None, description="List of videos (for single month query)")

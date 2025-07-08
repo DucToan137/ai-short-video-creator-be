@@ -1,7 +1,7 @@
 import subprocess
 import imageio_ffmpeg
 import os
-import tempfile
+import tempfile 
 from config import TEMP_DIR
 import cloudinary
 import cloudinary.uploader
@@ -233,6 +233,47 @@ async def get_media_by_user(user_id: str, page: int = 1, size: int = 10, media_t
     except Exception as e:
         print(f"Error getting user media: {e}")
         return {"media": [], "total": 0, "page": page, "size": size}
+
+async def get_all_media_by_user(user_id: str, media_type: Optional[MediaType] = None) -> Dict:
+    """Get ALL media by user ID without pagination"""
+    try:
+        try:
+            user_id_obj = ObjectId(user_id)
+            user_query = {
+                "$or": [
+                    {"user_id": user_id_obj},
+                    {"user_id": user_id}
+                ]
+            }
+        except:
+            user_query = {"user_id": user_id}
+            
+        query_filter = user_query
+        if media_type:
+            query_filter = {
+                "$and": [
+                    user_query,
+                    {"media_type": media_type.value}
+                ]
+            }
+        
+        total = await media_collection().count_documents(query_filter)
+        cursor = media_collection().find(query_filter).sort("created_at", -1)
+        media_list = []
+        
+        async for media in cursor:
+            media["id"] = str(media["_id"])
+            media["user_id"] = str(media["user_id"])
+            del media["_id"]
+            media_list.append(media)
+            
+        return {
+            "media": media_list,
+            "total": total
+        }
+    except Exception as e:
+        print(f"Error getting all user media: {e}")
+        return {"media": [], "total": 0}
 
 async def update_media(media_id: str, user_id: str, update_data: Dict) -> Optional[Dict]:
     """Update media metadata"""
@@ -939,24 +980,127 @@ def cleanup_temp_files(file_paths: list):
 
 async def check_media_of_user(user_id:str, media_id:str) -> bool:
     try:
-        # Try both ObjectId and string format for user_id
+        media = await get_media_by_id(media_id)
+        if not media:
+            return False
+        return str(media.get("user_id")) == str(user_id)
+    except Exception as e:
+        print(f"Error checking media ownership: {e}")
+        return False
+
+async def get_video_stats_by_month(user_id: str, year: Optional[int] = None, month: Optional[int] = None) -> Dict:
+    try:
+        # Set default year to current year if not provided
+        current_date = datetime.now()
+        if year is None:
+            year = current_date.year
+        
+        # Build query filter for user
         try:
             user_id_obj = ObjectId(user_id)
-            query_filter = {
-                "_id": ObjectId(media_id),
+            user_query = {
                 "$or": [
                     {"user_id": user_id_obj},
                     {"user_id": user_id}
                 ]
             }
         except:
-            query_filter = {"_id": ObjectId(media_id), "user_id": user_id}
+            user_query = {"user_id": user_id}
+        
+        query_filter = {
+            "$and": [
+                user_query,
+                {"media_type": MediaType.VIDEO.value}
+            ]
+        }
+        
+        if month is not None:
+            start_date = datetime(year, month, 1)
+            if month == 12:
+                end_date = datetime(year + 1, 1, 1)
+            else:
+                end_date = datetime(year, month + 1, 1)
             
-        media = await media_collection().find_one(query_filter)
-        return media is not None
+            query_filter["$and"].append({
+                "created_at": {
+                    "$gte": start_date,
+                    "$lt": end_date
+                }
+            })
+        else:
+            # Filter for entire year
+            start_date = datetime(year, 1, 1)
+            end_date = datetime(year + 1, 1, 1)
+            
+            query_filter["$and"].append({
+                "created_at": {
+                    "$gte": start_date,
+                    "$lt": end_date
+                }
+            })
+        
+        cursor = media_collection().find(query_filter).sort("created_at", -1)
+        videos = []
+        
+        async for video in cursor:
+            video["id"] = str(video["_id"])
+            video["user_id"] = str(video["user_id"])
+            del video["_id"]
+            videos.append(video)
+        
+        if month is not None:
+            total_videos = len(videos)
+            total_views = sum(video.get("metadata", {}).get("views", 0) for video in videos)
+            total_duration = sum(video.get("metadata", {}).get("duration", 0) for video in videos)
+            
+            return {
+                "year": year,
+                "month": month,
+                "total_videos": total_videos,
+                "total_views": total_views,
+                "total_duration": total_duration,
+                "videos": videos
+            }
+        else:
+            monthly_stats = {}
+            
+            for month_num in range(1, 13):
+                month_videos = [
+                    video for video in videos 
+                    if video["created_at"].month == month_num
+                ]
+                
+                monthly_stats[month_num] = {
+                    "month": month_num,
+                    "total_videos": len(month_videos),
+                    "total_views": sum(video.get("metadata", {}).get("views", 0) for video in month_videos),
+                    "total_duration": sum(video.get("metadata", {}).get("duration", 0) for video in month_videos),
+                    "video_count": len(month_videos)
+                }
+            
+            total_videos = len(videos)
+            total_views = sum(video.get("metadata", {}).get("views", 0) for video in videos)
+            total_duration = sum(video.get("metadata", {}).get("duration", 0) for video in videos)
+            
+            return {
+                "year": year,
+                "total_videos": total_videos,
+                "total_views": total_views,
+                "total_duration": total_duration,
+                "monthly_breakdown": monthly_stats,
+                "videos_this_month": monthly_stats.get(current_date.month, {}).get("total_videos", 0)
+            }
+            
     except Exception as e:
-        print(f"Error checking media ownership: {e}")
-        return False
+        print(f"Error getting video stats by month: {e}")
+        return {
+            "year": year or current_date.year,
+            "total_videos": 0,
+            "total_views": 0,
+            "total_duration": 0,
+            "monthly_breakdown": {},
+            "videos_this_month": 0
+        }
 
 def debug_scene_plan(scene_plan, audio_duration, transition_duration=0):
     """Debug function to display detailed scene planning information"""
