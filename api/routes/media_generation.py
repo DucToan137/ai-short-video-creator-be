@@ -6,7 +6,7 @@ from typing import Optional
 import tempfile
 # from config import OUTPUT_DIR
 from config import TEMP_DIR
-from services import generate_text, generate_speech, generate_image, transcribe_audio, convert_to_srt, create_video, add_subtitles, upload_media,cleanup_temp_file, cleanup_temp_files
+from services import generate_text, generate_speech, generate_image, transcribe_audio, convert_to_srt, create_video, add_subtitles, upload_media,cleanup_temp_file, cleanup_temp_files, generate_text_with_wikipedia
 from typing import Literal
 import json 
 import re
@@ -16,9 +16,20 @@ router = APIRouter(prefix="/media", tags=["Media Generation"])
 
 @router.post("/generate-text")
 async def generate_text_endpoint(model: Literal["deepseek", "gemini"] = Form(...), prompt: str = Form(...)):
-    """Generate text from a prompt"""
+    """Generate text from a prompt with Wikipedia sources"""
     try: 
-        generated_text = generate_text(model, prompt)
+        generation_result = generate_text_with_wikipedia(model, prompt)
+        
+        # Handle both old and new response formats for backward compatibility
+        if isinstance(generation_result, dict):
+            generated_text = generation_result.get('content', '')
+            wikipedia_sources = generation_result.get('wikipedia_sources', [])
+            wikipedia_topic = generation_result.get('wikipedia_topic')
+        else:
+            # Old format - just text
+            generated_text = generation_result
+            wikipedia_sources = []
+            wikipedia_topic = None
 
         # Dùng regex để trích nội dung JSON từ giữa các dấu ```
         json_text = re.search(r"```(?:json)?\s*(\{.*?\})\s*```",  generated_text, re.DOTALL)
@@ -26,8 +37,13 @@ async def generate_text_endpoint(model: Literal["deepseek", "gemini"] = Form(...
             parsed_data = json.loads(json_text.group(1))
         else:
             raise ValueError("Không tìm thấy JSON hợp lệ trong response.")   
-             
-        return {"text": parsed_data}
+        
+        # Return enhanced response with Wikipedia sources
+        return {
+            "text": parsed_data,
+            "wikipedia_sources": wikipedia_sources,
+            "wikipedia_topic": wikipedia_topic
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Text generation error: {str(e)}")
 

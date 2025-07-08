@@ -6,3 +6,4 @@ from .trending_topic import *
 from .voice import *
 from .background import *
 from .subtitle import *
+from .text_generation import *
