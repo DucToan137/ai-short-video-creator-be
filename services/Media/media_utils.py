@@ -360,6 +360,7 @@ def create_video(image_path, audio_path, output_path=None):
             "-c:a", "aac",  # Audio codec
             "-b:a", "192k",  # Audio bitrate
             "-pix_fmt", "yuv420p",  # Pixel format
+            "-vf", "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2",  # Scale to 720x1280 portrait
             "-shortest",  # Match video duration to audio
             "-y",  # Overwrite output file if it exists
             output_path  # Output file
@@ -791,8 +792,8 @@ def create_video_with_transitions(scene_plan, audio_path, output_path, transitio
         
         for i in range(1, len(scene_plan)):
             # Scale and format each input
-            filter_complex.append(f"[{i-1}:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1[v{i-1}]")
-            filter_complex.append(f"[{i}:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1[v{i}]")
+            filter_complex.append(f"[{i-1}:v]scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,setsar=1[v{i-1}]")
+            filter_complex.append(f"[{i}:v]scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,setsar=1[v{i}]")
             
             # Create crossfade
             if i == 1:
@@ -805,7 +806,7 @@ def create_video_with_transitions(scene_plan, audio_path, output_path, transitio
         
         # If only one scene, just scale it
         if len(scene_plan) == 1:
-            filter_complex = [f"[0:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1[vout]"]
+            filter_complex = [f"[0:v]scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,setsar=1[vout]"]
             current_output = "vout"
         
         # Build final command - ensure exact audio duration
@@ -861,7 +862,7 @@ def create_video_simple_concat(scene_plan, audio_path, output_path):
                 "-c:v", "libx264",
                 "-tune", "stillimage",
                 "-pix_fmt", "yuv420p",
-                "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2",
+                "-vf", "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2",
                 "-r", "25",
                 "-y",
                 scene_video

@@ -179,14 +179,14 @@ def search_backgrounds(query: str) -> List[Dict]:
     
     return results
 
-async def generate_custom_background(prompt: str, style: str = "realistic", resolution: str = "1080x1920") -> Dict:
+async def generate_custom_background(prompt: str, style: str = "realistic", resolution: str = "720x1280") -> Dict:
     """
     Generate custom background using AI image generation and upload to Cloudinary
     
     Args:
         prompt: Description of the background to generate
         style: Image style (realistic, abstract, cartoon)
-        resolution: Image resolution (default 1080x1920 for vertical video)
+        resolution: Image resolution (default 720x1280 for vertical video)
         
     Returns:
         Dict with generated background info including Cloudinary URL
@@ -196,13 +196,13 @@ async def generate_custom_background(prompt: str, style: str = "realistic", reso
         if 'x' in resolution:
             width, height = map(int, resolution.split('x'))
         else:
-            width, height = 1080, 1920
+            width, height = 720, 1280
         
         # Generate image using existing service
         output_file = os.path.join(TEMP_DIR, f"bg_custom_{uuid4()}.png")
         
         # Use Flux model for background generation
-        result_file = generate_image("flux", prompt, style, output_file)
+        result_file = generate_image("flux", prompt, style, output_file, width, height)
         
         if not result_file or not os.path.exists(result_file):
             raise Exception("Failed to generate background image")
@@ -281,7 +281,7 @@ async def get_recommended_backgrounds(script_content: str = None, selected_voice
                 custom_bg = await generate_custom_background(
                     prompt=image_prompt,
                     style="realistic",
-                    resolution="1080x1920"
+                    resolution="720x1280"
                 )
                 
                 # Update title to be more descriptive
@@ -359,7 +359,7 @@ async def generate_backgrounds_from_script_images(script_images: list, style: st
             background = await generate_custom_background(
                 prompt=image_prompt,
                 style=style,
-                resolution="1080x1920"
+                resolution="720x1280"
             )
             
             # Enhance metadata

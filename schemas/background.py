@@ -33,7 +33,7 @@ class BackgroundGenerationRequest(BaseModel):
         "dark", "lego", "realistic", "cartoon", "vintage", "minimalist",
         "fantasy", "popart", "impressionist"
     ]] = Field("realistic", description="Generation style - see AVAILABLE_STYLES for options")
-    resolution: Optional[str] = Field("1080x1920", description="Image resolution for vertical video")
+    resolution: Optional[str] = Field("720x1280", description="Image resolution for vertical video")
 
 class BackgroundGenerationResponse(BaseModel):
     """Schema for background generation response"""

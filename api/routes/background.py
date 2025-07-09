@@ -170,7 +170,7 @@ async def generate_background(request: BackgroundGenerationRequest):
         result = generate_custom_background(
             prompt=request.prompt,
             style=request.style or "realistic",
-            resolution=request.resolution or "1080x1920"
+            resolution=request.resolution or "720x1280"
         )
         
         return BackgroundGenerationResponse(
@@ -255,7 +255,7 @@ async def generate_multiple_backgrounds_route(
                     background_request = BackgroundGenerationRequest(
                         prompt=f"Scene {i+1}: {prompt}. Style: {style}",
                         style=style,
-                        resolution="1024x768"
+                        resolution="720x1280"
                     )
                     
                     result = await generate_custom_background(
@@ -290,7 +290,7 @@ async def generate_multiple_backgrounds_route(
                     background_request = BackgroundGenerationRequest(
                         prompt=f"Video scene: {base_prompt[:100]}. Style: {style}. Variation {i+1}",
                         style=style,
-                        resolution="1024x768"
+                        resolution="720x1280"
                     )
                     
                     result = await generate_custom_background(

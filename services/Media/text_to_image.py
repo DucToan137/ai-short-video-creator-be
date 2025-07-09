@@ -1,4 +1,4 @@
-def generate_image(model, prompt,style=None, output_file="image.png", width=1024, height=768):
+def generate_image(model, prompt,style=None, output_file="image.png", width=720, height=1280):
     style_prompts = {
         "ghibli": "in the style of Studio Ghibli, anime, beautiful, detailed, magical, whimsical",
         "watercolor": "watercolor painting, soft colors, artistic, painted with watercolors, gentle brushstrokes",
