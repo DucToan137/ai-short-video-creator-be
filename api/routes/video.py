@@ -214,11 +214,10 @@ async def create_complete_video(
         
         final_video_path = video_result
           # Step 4: Add subtitles if enabled (only from audio transcription)
+        srt_path = None
         if request.subtitle_enabled:
             print("Adding subtitles to video...")
             try:
-                srt_path = None
-                
                 if audio_path:
                     print("🎤 Generating subtitles from audio transcription...")
                     try:
