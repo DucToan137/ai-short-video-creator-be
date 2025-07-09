@@ -4,7 +4,7 @@ from models import Social,SocialVideoCreate
 collection = social_collection()
 async def add_social_video(social_create: SocialVideoCreate):
     try:
-        exitsing_social =await collection.find_one({"user_id": social_create.user_id})
+        exitsing_social =await collection.find_one({"user_id": social_create.user_id,"video_id": social_create.video_id })
         if not exitsing_social:
             new_social = None
             if social_create.platform == SocialPlatform.FACEBOOK:

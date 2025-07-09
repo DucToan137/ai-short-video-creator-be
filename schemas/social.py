@@ -21,7 +21,7 @@ class VideoStatsResponse(BaseModel):
     title: str
     description: Optional[str] = ""
     platform_url:str
-    created_at: datetime
+    created_at: Optional[datetime] = None
 class GoogleVideoStatsResponse(VideoStatsResponse):
     view_count: Optional[int] = 0
     like_count: Optional[int] = 0
