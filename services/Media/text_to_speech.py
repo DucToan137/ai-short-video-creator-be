@@ -119,9 +119,19 @@ async def generate_speech_async(text: str, voice_id: str = DEFAULT_VOICE, user_i
         loop = asyncio.get_event_loop()
         audio_path = await loop.run_in_executor(None, sync_generate)
         
-        # Estimate duration (rough calculation: ~150 words per minute)
+        # Get actual duration from the generated WAV file
+        try:
+            with wave.open(audio_path, 'rb') as wav_file:
+                frames = wav_file.getnframes()
+                sample_rate = wav_file.getframerate()
+                actual_duration = frames / sample_rate
+        except Exception as e:
+            print(f"Warning: Could not read audio duration from {audio_path}: {e}")
+            # Fallback to estimated duration if file reading fails
+            word_count = len(text.split())
+            actual_duration = max(5, (word_count / 150) * 60)  # minimum 5 seconds
+        
         word_count = len(text.split())
-        estimated_duration = max(5, (word_count / 150) * 60)  # minimum 5 seconds
         
         # Upload to Cloudinary if user_id provided
         if user_id:
@@ -134,7 +144,7 @@ async def generate_speech_async(text: str, voice_id: str = DEFAULT_VOICE, user_i
                 prompt=f"Generated speech: {text[:100]}{'...' if len(text) > 100 else ''}",
                 metadata={
                     "voice_id": voice_id,
-                    "duration": estimated_duration,
+                    "duration": actual_duration,
                     "word_count": word_count,
                     "type": "generated_speech"
                 }
@@ -148,7 +158,7 @@ async def generate_speech_async(text: str, voice_id: str = DEFAULT_VOICE, user_i
                 "audio_path": audio_path,  # Keep for backward compatibility
                 "audio_url": upload_result["url"],  # Cloudinary URL
                 "audio_id": upload_result["id"],  # Database ID
-                "duration": estimated_duration,
+                "duration": actual_duration,
                 "voice_id": voice_id,
                 "cloudinary_public_id": upload_result["public_id"]
             }
@@ -157,7 +167,7 @@ async def generate_speech_async(text: str, voice_id: str = DEFAULT_VOICE, user_i
             # Fallback to local file if no user_id
             return {
                 "audio_path": audio_path,
-                "duration": estimated_duration,
+                "duration": actual_duration,
                 "voice_id": voice_id
             }
         
