@@ -83,7 +83,7 @@ def generate_text_with_wikipedia(model, prompt):
     from .wikipedia_service import WikipediaService
     
     wiki_service = WikipediaService()
-    keywords = wiki_service.extract_keywords_with_ai(prompt)
+    keywords = wiki_service.extract_keywords_with_ai(prompt, model)  # Pass model parameter
     
     # Get Wikipedia content for the most relevant keyword
     wikipedia_data = None
@@ -92,7 +92,7 @@ def generate_text_with_wikipedia(model, prompt):
     if keywords:
         # Try to get Wikipedia content for the first keyword
         main_keyword = keywords[0]
-        wikipedia_data = wiki_service.get_relevant_content(main_keyword, max_articles=2)
+        wikipedia_data = wiki_service.get_relevant_content(main_keyword, max_articles=2, model=model)  # Pass model parameter
         
         if wikipedia_data and wikipedia_data.get('combined_content'):
             # Truncate context to avoid making prompt too long

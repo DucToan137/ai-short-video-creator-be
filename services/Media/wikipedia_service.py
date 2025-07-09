@@ -440,13 +440,14 @@ class WikipediaService:
         
         return cleaned
 
-    def get_relevant_content(self, topic: str, max_articles: int = 3) -> Dict:
+    def get_relevant_content(self, topic: str, max_articles: int = 3, model: str = "deepseek") -> Dict:
         """
         Get relevant Wikipedia content for a topic
         
         Args:
             topic: The topic to search for
             max_articles: Maximum number of articles to return
+            model: AI model to use for keyword extraction ("deepseek" or "gemini")
             
         Returns:
             Dictionary containing articles and summary content
@@ -458,8 +459,8 @@ class WikipediaService:
             # If no results, try alternative search strategies
             if not articles:
                 # Strategy 1: Use AI to extract better keywords
-                keywords = self.extract_keywords_with_ai(topic)
-                print(f"AI extracted keywords for search: {keywords}")
+                keywords = self.extract_keywords_with_ai(topic, model)
+                print(f"AI extracted keywords for search using {model}: {keywords}")
                 
                 for keyword in keywords:
                     if keyword:
@@ -513,12 +514,13 @@ class WikipediaService:
                 'found_articles': 0
             }
 
-    def extract_keywords_with_ai(self, prompt: str) -> List[str]:
+    def extract_keywords_with_ai(self, prompt: str, model: str = "deepseek") -> List[str]:
         """
         Use AI to extract the most relevant Wikipedia search keywords from a prompt
         
         Args:
             prompt: User prompt
+            model: AI model to use ("deepseek" or "gemini")
             
         Returns:
             List of AI-suggested keywords for Wikipedia search
@@ -550,32 +552,49 @@ Examples:
 Your response for "{prompt}":
 """
             
-            # Direct AI call to avoid circular import
-            from openai import OpenAI
-            from config.app_config import OPENROUTER_KEY
+            # Use the specified AI model
+            if model.lower() == "gemini":
+                # Use Gemini model
+                from google import genai
+                from config.app_config import GEMINI_KEY
+                
+                client = genai.Client(api_key=GEMINI_KEY)
+                
+                response = client.models.generate_content(
+                    model="gemini-2.0-flash",
+                    contents=[keyword_prompt],  
+                )
+                ai_content = response.text
+                
+                print(f"Using Gemini for keyword extraction: {ai_content}")
+            else:
+                # Use DeepSeek model (default)
+                from openai import OpenAI
+                from config.app_config import OPENROUTER_KEY
 
-            client = OpenAI(
-                base_url="https://openrouter.ai/api/v1",
-                api_key=OPENROUTER_KEY,
-            )
-            
-            completion = client.chat.completions.create(
-                extra_body={},
-                model="deepseek/deepseek-chat-v3-0324:free",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": keyword_prompt,
-                            },
-                        ]    
-                    }
-                ],
-            )
-            
-            ai_content = completion.choices[0].message.content
+                client = OpenAI(
+                    base_url="https://openrouter.ai/api/v1",
+                    api_key=OPENROUTER_KEY,
+                )
+                
+                completion = client.chat.completions.create(
+                    extra_body={},
+                    model="deepseek/deepseek-chat-v3-0324:free",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": keyword_prompt,
+                                },
+                            ]    
+                        }
+                    ],
+                )
+                
+                ai_content = completion.choices[0].message.content
+                print(f"Using DeepSeek for keyword extraction: {ai_content}")
             
             # Extract keywords from AI response
             # Look for the actual keyword list (usually the last line or after specific patterns)
@@ -609,15 +628,15 @@ Your response for "{prompt}":
                 filter_words = {'input', 'output', 'example', 'examples', 'your', 'response', 'for', 'keywords'}
                 keywords = [kw for kw in keywords if kw.lower() not in filter_words and len(kw) > 1]
                 
-                print(f"AI extracted keywords: {keywords}")
+                print(f"AI extracted keywords using {model}: {keywords}")
                 return keywords[:3]  # Return top 3 keywords
             
             # If AI extraction fails, fallback to simple extraction
-            print("AI keyword extraction failed, falling back to simple method")
+            print(f"AI keyword extraction with {model} failed, falling back to simple method")
             return self.extract_keywords_from_prompt_simple(prompt)
             
         except Exception as e:
-            print(f"Error in AI keyword extraction: {e}")
+            print(f"Error in AI keyword extraction with {model}: {e}")
             # Fallback to simple extraction
             return self.extract_keywords_from_prompt_simple(prompt)
 
