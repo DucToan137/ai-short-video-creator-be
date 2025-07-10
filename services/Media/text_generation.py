@@ -9,6 +9,24 @@ ADDITIONAL CONTEXT FROM WIKIPEDIA:
 Use this information to make your content more accurate and informative, but keep it concise for a 60-second video.
 """
     
+    # Extract style tags if present in the prompt
+    style_section = ""
+    if "Style:" in prompt:
+        try:
+            style_content = prompt.split("Style:")[1].strip()
+            if style_content:
+                style_section = f"""
+
+STYLE INSTRUCTIONS:
+Write the script in the following style: {style_content}
+Make sure the tone, vocabulary, and presentation match these style requirements.
+"""
+                # Remove the style part from the main prompt to avoid redundancy
+                prompt = prompt.split("Style:")[0].strip()
+        except:
+            # In case of parsing error, continue without style
+            pass
+    
     return (f"""
 You are a content generator for short-form videos under 60 seconds.
 
@@ -17,7 +35,7 @@ Given a single user prompt in any language, you must:
 2. Write the video **title** and **script** in the same language as the user prompt, should be either English or Vietnamese
 3. Write exactly 3 **image generation prompts** in English that visually illustrate key moments of the script
 
-The script should be short and engaging, and take no more than 60 seconds to read aloud (maximum ~120 words).{context_section}
+The script should be short and engaging, and take no more than 60 seconds to read aloud (maximum ~120 words).{context_section}{style_section}
 
 Return the result strictly in the following JSON format:
 {{

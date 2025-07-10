@@ -15,7 +15,8 @@ from services.trending_topics import (
     update_trending_topic,
     delete_trending_topic,
     get_trending_categories,
-    seed_trending_topics
+    seed_trending_topics,
+    suggest_trending_topics
 )
 from services.internet_trends import (
     search_topics_with_tracking,
@@ -169,3 +170,12 @@ async def seed_trending_topics_endpoint(
         return {"message": "Successfully seeded trending topics"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to seed trending topics: {str(e)}")
+
+@router.get("/suggestions")
+async def get_topic_suggestions(
+    q: str = Query(..., description="Search query for suggestions"),
+    limit: int = Query(5, ge=1, le=10, description="Maximum number of suggestions")
+):
+    """Get search suggestions for trending topics as user types"""
+    suggestions = await suggest_trending_topics(q, limit)
+    return {"suggestions": suggestions}

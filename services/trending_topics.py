@@ -237,3 +237,68 @@ async def seed_trending_topics():
         
     except Exception as e:
         print(f"Error seeding trending topics: {e}")
+
+async def suggest_trending_topics(query: str, limit: int = 5) -> List[Dict]:
+    """
+    Suggest trending topics based on user input
+    Returns suggestions for search autocomplete without doing a full search
+    """
+    try:
+        if not query or len(query.strip()) < 2:
+            # Return popular topics if query is too short
+            cursor = trending_topics_collection().find(
+                {"is_active": True}
+            ).sort("popularity", -1).limit(limit)
+            
+            suggestions = []
+            async for topic in cursor:
+                suggestions.append({
+                    "text": topic["title"],
+                    "type": "topic"
+                })
+            return suggestions
+        
+        # Create regex pattern for case-insensitive matching
+        pattern = {"$regex": f"^{query}", "$options": "i"}
+        
+        # Search in titles
+        title_cursor = trending_topics_collection().find(
+            {"title": pattern, "is_active": True}
+        ).sort("popularity", -1).limit(limit)
+        
+        suggestions = []
+        async for topic in title_cursor:
+            suggestions.append({
+                "text": topic["title"],
+                "type": "topic"
+            })
+        
+        # If we need more suggestions, search in keywords
+        if len(suggestions) < limit:
+            remaining = limit - len(suggestions)
+            existing_titles = [s["text"].lower() for s in suggestions]
+            
+            # Aggregate pipeline to unwind and match keywords
+            pipeline = [
+                {"$match": {"is_active": True}},
+                {"$unwind": "$keywords"},
+                {"$match": {"keywords": pattern}},
+                {"$sort": {"popularity": -1}},
+                {"$limit": remaining * 2}  # Get extra to filter duplicates
+            ]
+            
+            keyword_cursor = trending_topics_collection().aggregate(pipeline)
+            
+            async for doc in keyword_cursor:
+                keyword = doc["keywords"]
+                if keyword.lower() not in existing_titles and len(suggestions) < limit:
+                    suggestions.append({
+                        "text": keyword,
+                        "type": "keyword"
+                    })
+                    existing_titles.append(keyword.lower())
+        
+        return suggestions
+    except Exception as e:
+        print(f"Error suggesting trending topics: {e}")
+        return []
