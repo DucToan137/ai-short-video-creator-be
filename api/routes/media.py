@@ -1,12 +1,13 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, File, UploadFile, Form
 from typing import Optional
-from schemas import MediaCreate, MediaUpdate, MediaResponse, MediaListResponse, MediaDelete, VideoStatsResponse
-from services import get_media_by_id, get_media_by_user, get_all_media_by_user, update_media, delete_media, upload_media, get_video_stats_by_month
+from schemas import MediaCreate, MediaUpdate, MediaResponse, MediaListResponse, MediaDelete, VideoStatsResponse, EnhancedVideoStatsResponse, DailyVideoStatsResponse, WeeklyVideoStatsResponse
+from services import get_media_by_id, get_media_by_user, get_all_media_by_user, update_media, delete_media, upload_media, get_video_stats_by_month, get_video_stats_by_day, get_video_stats_by_week
 from api.deps import get_current_user
 from models.media import MediaType
 import os
 from uuid import uuid4
 from config import TEMP_DIR
+from datetime import datetime
 
 # Import validation functions
 from services.Media.media_validation import is_valid_audio_media, is_valid_video_media, is_valid_image_media
@@ -295,4 +296,95 @@ async def get_video_statistics(
         raise HTTPException(
             status_code=500, 
             detail=f"Failed to get video statistics: {str(e)}"
+        )
+
+@router.get("/video/stats/enhanced", response_model=EnhancedVideoStatsResponse)
+async def get_enhanced_video_statistics(
+    current_user = Depends(get_current_user)
+):
+    """Get enhanced video statistics including daily, weekly, and monthly stats"""
+    try:
+        user_id = str(current_user.id)
+        
+        # Get monthly stats (current month)
+        monthly_stats = await get_video_stats_by_month(user_id)
+        
+        # Get daily stats (today)
+        daily_stats = await get_video_stats_by_day(user_id)
+        
+        # Get weekly stats (this week)
+        weekly_stats = await get_video_stats_by_week(user_id)
+        
+        return EnhancedVideoStatsResponse(
+            total_videos=monthly_stats.get("total_videos", 0),
+            videos_this_month=monthly_stats.get("videos_this_month", 0),
+            videos_today=daily_stats.get("videos_today", 0),
+            videos_this_week=weekly_stats.get("videos_this_week", 0)
+        )
+        
+    except Exception as e:
+        print(f"Error getting enhanced video statistics: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to get enhanced video statistics: {str(e)}"
+        )
+
+@router.get("/video/stats/daily", response_model=DailyVideoStatsResponse)
+async def get_daily_video_statistics(
+    date: Optional[str] = Query(None, description="Date in YYYY-MM-DD format (defaults to today)"),
+    current_user = Depends(get_current_user)
+):
+    """Get video statistics for a specific day"""
+    try:
+        user_id = str(current_user.id)
+        
+        # Parse date if provided
+        target_date = None
+        if date:
+            try:
+                target_date = datetime.strptime(date, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        
+        stats = await get_video_stats_by_day(user_id, target_date)
+        
+        return DailyVideoStatsResponse(**stats)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error getting daily video statistics: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to get daily video statistics: {str(e)}"
+        )
+
+@router.get("/video/stats/weekly", response_model=WeeklyVideoStatsResponse)
+async def get_weekly_video_statistics(
+    date: Optional[str] = Query(None, description="Date in YYYY-MM-DD format (defaults to this week)"),
+    current_user = Depends(get_current_user)
+):
+    """Get video statistics for a specific week"""
+    try:
+        user_id = str(current_user.id)
+        
+        # Parse date if provided
+        target_date = None
+        if date:
+            try:
+                target_date = datetime.strptime(date, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        
+        stats = await get_video_stats_by_week(user_id, target_date)
+        
+        return WeeklyVideoStatsResponse(**stats)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error getting weekly video statistics: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to get weekly video statistics: {str(e)}"
         )

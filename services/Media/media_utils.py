@@ -5,7 +5,7 @@ import tempfile
 from config import TEMP_DIR
 import cloudinary
 import cloudinary.uploader
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Dict
 from config import media_collection
 from models.media import MediaModel, MediaType
@@ -1101,6 +1101,135 @@ async def get_video_stats_by_month(user_id: str, year: Optional[int] = None, mon
             "total_duration": 0,
             "monthly_breakdown": {},
             "videos_this_month": 0
+        }
+
+async def get_video_stats_by_day(user_id: str, date: Optional[datetime] = None) -> Dict:
+    """Get video statistics for a specific day"""
+    try:
+        # Set default date to today if not provided
+        current_date = datetime.now()
+        if date is None:
+            date = current_date
+        
+        # Build query filter for user
+        try:
+            user_id_obj = ObjectId(user_id)
+            user_query = {
+                "$or": [
+                    {"user_id": user_id_obj},
+                    {"user_id": user_id}
+                ]
+            }
+        except:
+            user_query = {"user_id": user_id}
+        
+        # Set start and end of the day
+        start_date = datetime(date.year, date.month, date.day, 0, 0, 0)
+        end_date = datetime(date.year, date.month, date.day, 23, 59, 59)
+        
+        query_filter = {
+            "$and": [
+                user_query,
+                {"media_type": MediaType.VIDEO.value},
+                {
+                    "created_at": {
+                        "$gte": start_date,
+                        "$lte": end_date
+                    }
+                }
+            ]
+        }
+        
+        cursor = media_collection().find(query_filter).sort("created_at", -1)
+        videos = []
+        
+        async for video in cursor:
+            video["id"] = str(video["_id"])
+            video["user_id"] = str(video["user_id"])
+            del video["_id"]
+            videos.append(video)
+        
+        total_videos = len(videos)
+        
+        return {
+            "date": date.isoformat(),
+            "videos_today": total_videos,
+            "videos": videos
+        }
+        
+    except Exception as e:
+        print(f"Error getting video stats by day: {e}")
+        return {
+            "date": (date or current_date).isoformat(),
+            "videos_today": 0,
+            "videos": []
+        }
+
+async def get_video_stats_by_week(user_id: str, date: Optional[datetime] = None) -> Dict:
+    """Get video statistics for a specific week"""
+    try:
+        # Set default date to today if not provided
+        current_date = datetime.now()
+        if date is None:
+            date = current_date
+        
+        # Build query filter for user
+        try:
+            user_id_obj = ObjectId(user_id)
+            user_query = {
+                "$or": [
+                    {"user_id": user_id_obj},
+                    {"user_id": user_id}
+                ]
+            }
+        except:
+            user_query = {"user_id": user_id}
+        
+        # Calculate start and end of the week (Monday to Sunday)
+        days_since_monday = date.weekday()  # Monday is 0
+        start_of_week = date - timedelta(days=days_since_monday)
+        start_date = datetime(start_of_week.year, start_of_week.month, start_of_week.day, 0, 0, 0)
+        end_of_week = start_of_week + timedelta(days=6)
+        end_date = datetime(end_of_week.year, end_of_week.month, end_of_week.day, 23, 59, 59)
+        
+        query_filter = {
+            "$and": [
+                user_query,
+                {"media_type": MediaType.VIDEO.value},
+                {
+                    "created_at": {
+                        "$gte": start_date,
+                        "$lte": end_date
+                    }
+                }
+            ]
+        }
+        
+        cursor = media_collection().find(query_filter).sort("created_at", -1)
+        videos = []
+        
+        async for video in cursor:
+            video["id"] = str(video["_id"])
+            video["user_id"] = str(video["user_id"])
+            del video["_id"]
+            videos.append(video)
+        
+        total_videos = len(videos)
+        
+        return {
+            "week_start": start_date.isoformat(),
+            "week_end": end_date.isoformat(),
+            "videos_this_week": total_videos,
+            "videos": videos
+        }
+        
+    except Exception as e:
+        print(f"Error getting video stats by week: {e}")
+        return {
+            "week_start": (date or current_date).isoformat(),
+            "week_end": (date or current_date).isoformat(),
+            "videos_this_week": 0,
+            "videos": []
         }
 
 def debug_scene_plan(scene_plan, audio_duration, transition_duration=0):

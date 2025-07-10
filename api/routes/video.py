@@ -294,7 +294,9 @@ async def create_complete_video(
             user_id,
             folder="videos",
             resource_type="video",
-            prompt=f"Complete video: {request.script_text[:50]}...",            metadata={
+            prompt=f"Complete video: {request.script_text[:50]}...",
+            title=request.title or f"Video {datetime.now().strftime('%Y-%m-%d %H:%M')}",  # Use provided title or generate default
+            metadata={
                 "voice_id": request.voice_id,
                 "audio_url": audio_url,  # Store audio URL instead of audio_id
                 "audio_source": getattr(request, 'audio_source', None),  # Track audio source
@@ -321,6 +323,7 @@ async def create_complete_video(
         return {
             "id": upload_result["id"],
             "user_id": user_id,
+            "title": request.title or f"Video {datetime.now().strftime('%Y-%m-%d %H:%M')}",
             "content": f"Complete video: {request.script_text[:50]}...",
             "media_type": "video",
             "url": upload_result["url"],

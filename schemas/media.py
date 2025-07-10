@@ -41,6 +41,7 @@ class VoiceSettings(BaseModel):
 # Schema for complete video creation
 class CompleteVideoRequest(BaseModel):
     script_text: str = Field(..., description="Script content for the video")
+    title: Optional[str] = Field(None, max_length=100, description="Title for the video")
     voice_id: Optional[str] = Field(None, description="ID of the voice to use (for AI voice)")
     audio_url: Optional[str] = Field(None, description="URL of uploaded audio file")
     audio_source: Optional[str] = Field(None, description="Source of audio: 'uploaded', 'generated', 'voice_generation'")
@@ -107,3 +108,23 @@ class VideoStatsResponse(BaseModel):
     monthly_breakdown: Optional[Dict[int, MonthlyVideoStats]] = Field(None, description="Monthly breakdown")
     videos_this_month: Optional[int] = Field(None, description="Videos created this month")
     videos: Optional[List[Dict]] = Field(None, description="List of videos (for single month query)")
+
+# Schema for daily video statistics response
+class DailyVideoStatsResponse(BaseModel):
+    date: str = Field(..., description="Date in ISO format")
+    videos_today: int = Field(..., description="Videos created today")
+    videos: Optional[List[Dict]] = Field(None, description="List of videos created today")
+
+# Schema for weekly video statistics response
+class WeeklyVideoStatsResponse(BaseModel):
+    week_start: str = Field(..., description="Start of week in ISO format")
+    week_end: str = Field(..., description="End of week in ISO format")
+    videos_this_week: int = Field(..., description="Videos created this week")
+    videos: Optional[List[Dict]] = Field(None, description="List of videos created this week")
+
+# Schema for enhanced video statistics response that includes daily and weekly stats
+class EnhancedVideoStatsResponse(BaseModel):
+    total_videos: int = Field(..., description="Total videos")
+    videos_this_month: int = Field(..., description="Videos created this month")
+    videos_today: int = Field(..., description="Videos created today")
+    videos_this_week: int = Field(..., description="Videos created this week")
