@@ -10,7 +10,7 @@ from services import create_user,authenticate_user,\
 from services.Auth.FacebookAuth import handle_facebook_callback
     # get_google_oauth_url, get_facebook_oauth_url,get_tiktok_auth_url,\
     # handle_facebook_oauth_callback,handle_google_callback,handle_tiktok_oauth_callback
-from services.Auth.User import update_user, change_password
+from services.Auth.User import update_user, change_password,get_user_by_id
 from core import create_access_token,create_refresh_token,verify_token
 from config import app_config
 from config.cloudinary_config import cloudinary_config
@@ -264,8 +264,20 @@ async def tiktok_auth():
 @router.get("/tiktok/callback")
 async def tiktok_callback(code: str, response: Response,state:str =None):
     try:
-        print("State:", state)
-        user = await handle_tiktok_oauth_callback(code, state)
+        current_user:User= None
+        state_decoded = urllib.parse.unquote(state)
+
+        if state and "access_token=" in state:
+            params = dict(x.split("=") for x in state_decoded.split("&") if "=" in x)
+            access_token = params.get("access_token")
+            if access_token:
+                try:
+                    payload = verify_token(access_token, token_type="access")
+                    user_id = payload.get("id")
+                    current_user = await get_user_by_id(user_id)
+                except Exception as e:
+                    current_user = None
+        user = await handle_tiktok_oauth_callback(code, state_decoded,current_user)
         access_token = create_access_token(data={"sub": user.username, "id": user.id})
         refresh_token = create_refresh_token(data={"sub": user.username, "id": user.id})
         response.set_cookie(
@@ -284,6 +296,17 @@ async def tiktok_callback(code: str, response: Response,state:str =None):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred while processing TikTok callback: {str(e)}"
+        )
+@router.get("/tiktok/link/auth")
+async def tiktok_link_auth(current_user: User = Depends(get_current_user)):
+    try:
+        access_token = create_access_token(data={"sub": current_user.username, "id": current_user.id})
+        auth_url = get_tiktok_auth_url(state_prefix="link", access_token=access_token)
+        return {"auth_url": auth_url}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while getting TikTok link URL: {str(e)}"
         )
 @router.post("/logout")
 async def logout_user(response: Response):

@@ -61,6 +61,7 @@ async def get_current_user_no_credential(credentials:HTTPAuthorizationCredential
         raise credentials_exception
     facebook = {}
     google = {}
+    tiktok = {}
     if user.social_credentials is not None:
         social_credentials = user.social_credentials
         if social_credentials.get("facebook") is not None:
@@ -77,10 +78,15 @@ async def get_current_user_no_credential(credentials:HTTPAuthorizationCredential
                 "email": google_credentials.get("email"),
                 "avatar": google_credentials.get("avatar"),
             }
+        if social_credentials.get("tiktok") is not None:
+            tiktok = {
+                "open_id": "tiktok_data"
+            }
             
     new_social_credentials = {
         "facebook": facebook,
-        "google": google
+        "google": google,
+        "tiktok": tiktok,
     }
     
     user_dict = user.model_dump()

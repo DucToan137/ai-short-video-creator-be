@@ -7,9 +7,10 @@ import requests
 import json
 from fastapi import HTTPException,status
 from models import User
-from services import get_user_by_tiktok_open_id,generate_username,generate_password,hash_password
+from services import get_user_by_tiktok_open_id,generate_username,generate_password,hash_password,get_user_by_username
 from datetime import datetime
-from urllib.parse import urlencode,quote
+from urllib.parse import urlencode
+from bson import ObjectId
 TIKTOK_CLIENT_KEY = app_config.TIKTOK_CLIENT_KEY
 TIKTOK_CLIENT_SECRET = app_config.TIKTOK_CLIENT_SECRET
 TIKTOK_REDIRECT_URI = app_config.TIKTOK_REDIRECT_URI
@@ -31,25 +32,34 @@ def generate_code_challenge(verifier: str) -> str:
     # Desktop PKCE: SHA256 → hex string
     return hashlib.sha256(verifier.encode('ascii')).hexdigest()
 
-def get_tiktok_auth_url():
+def get_tiktok_auth_url(state_prefix="auth", access_token: str = None) -> str:
     code_verifier = generate_code_verifier()
     code_challenge = generate_code_challenge(code_verifier)
-    state = f"tiktok_auth_{secrets.token_urlsafe(16)}"
-    _code_verifiers[state] = code_verifier
+    state_value = None
+    state_key = None
+    if state_prefix == "link" and access_token:
+        # Cho linking: embed access token vào state
+        state_value = f"link&access_token={access_token}"
+        state_key = state_value
+    else:
+        # Cho auth thông thường
+        state_value = f"tiktok_auth_{secrets.token_urlsafe(16)}"
+        state_key = state_value    
+    _code_verifiers[state_key] = code_verifier
     base_url = "https://www.tiktok.com/v2/auth/authorize/"
     params = {
         "client_key": TIKTOK_CLIENT_KEY,
         "scope": ",".join(TIKTOK_SCOPES),
         "response_type": "code",
         "redirect_uri": TIKTOK_REDIRECT_URI,
-        "state": state,
+        "state": state_value,
         "code_challenge": code_challenge,
         "code_challenge_method": "S256"
     }
     
     url = f"{base_url}?{urlencode(params)}"
     return url
-async def handle_tiktok_oauth_callback(code: str,state:str =None) -> User:
+async def handle_tiktok_oauth_callback(code: str,state:str =None,current_user:User=None) -> User:
     try:
         token_url ="https://open.tiktokapis.com/v2/oauth/token/"
         token_data = {
@@ -77,9 +87,8 @@ async def handle_tiktok_oauth_callback(code: str,state:str =None) -> User:
         access_token = result.get("access_token")
         refresh_token = result.get("refresh_token")
         expires_in = result.get("expires_in")
-
         user_info = await get_tiktok_user_info(access_token)
-        user = await process_tiktok_user(user_info, access_token, refresh_token, expires_in)
+        user = await process_tiktok_user(user_info, access_token, refresh_token, expires_in,current_user)
         return user
 
     except Exception as e:
@@ -111,7 +120,7 @@ async def get_tiktok_user_info(access_token: str) -> Dict[str, Any]:
     data = response.json()
     return data.get("data", {}).get("user", {})
 
-async def process_tiktok_user(user_data: Dict[str, Any], access_token: str,refresh_token:str,expires_int:int) -> User:
+async def process_tiktok_user(user_data: Dict[str, Any], access_token: str,refresh_token:str,expires_int:int,current_user:User=None) -> User:
     display_name = user_data.get("display_name")
     avatar_url = user_data.get("avatar_url")
     open_id = user_data.get("open_id")
@@ -127,12 +136,14 @@ async def process_tiktok_user(user_data: Dict[str, Any], access_token: str,refre
         "token_created_at": datetime.now().timestamp(),
         "open_id": open_id,
     }
-    existing_user = await get_user_by_tiktok_open_id(open_id)
+    existing_user = None
+    if current_user:
+        existing_user = await get_user_by_username(current_user.username)
     if existing_user:
         social_credentials = existing_user.social_credentials or {}
         social_credentials['tiktok'] = tiktok_platform_data
         await collection.update_one(
-            {"_id": existing_user.id},
+            {"_id": ObjectId(existing_user.id)},
             {"$set": {"social_credentials": social_credentials}}
         )
         existing_user.social_credentials = social_credentials
