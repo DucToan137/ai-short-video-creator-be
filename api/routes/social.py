@@ -60,9 +60,9 @@ async def get_more_information_social_networks(user: User = Depends(get_current_
         )
     
 @router.post("/top-video",response_model=Optional[list[dict]])
-async def get_top_videod(user: User = Depends(get_current_user),start_date:datetime =Form(...),end_date:datetime=Form(...),type_sta:str= Form(...), platform: SocialPlatform = Form(...)):
+async def get_top_videod(user: User = Depends(get_current_user),start_date:datetime =Form(...),end_date:datetime=Form(...),type_sta:str= Form(...), platform: SocialPlatform = Form(...),max_results: int = Form(10)):
     try:
-        return await get_top_video(user,start_date,end_date, type_sta, platform)
+        return await get_top_video(user,start_date,end_date, type_sta, platform,max_results)
     except HTTPException as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

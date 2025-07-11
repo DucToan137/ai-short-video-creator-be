@@ -298,6 +298,7 @@ async def get_top_tiktok_videos_by_stats_and_date(user, start_date, end_date, ty
         # Lấy top max_results
         top_videos = [
             {
+                "platform": "tiktok",
                 "title": v.get("title", ""),
                 "count": int(v.get(type_sta, 0)),
             }

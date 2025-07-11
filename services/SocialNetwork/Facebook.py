@@ -323,7 +323,7 @@ async def get_top_facebook_videos_by_stat(user: User, start_date: datetime, end_
                         raise HTTPException(status_code=400, detail="Invalid statistic type")
 
                     videos.append({
-                        'id': video_id,
+                         "platform": "facebook",
                         'title': title,
                         'count': count
                     })

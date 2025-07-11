@@ -159,6 +159,7 @@ async def get_top_youtube_videos_by_views_and_date(user: User, start_date: datet
                 snippet = video['snippet']
                 all_video_stats.append(
                     {
+                        "platform": "google",
                         "title": snippet.get('title', ''),
                         "count": int(stats.get(f'{type_sta}Count', 0)),
                     }
