@@ -5,6 +5,8 @@ from googleapiclient.discovery import build,Resource
 from googleapiclient.http import MediaIoBaseUpload
 from fastapi import HTTPException, status
 from .SocialUtils import add_social_video
+from datetime import datetime
+from typing import List,Any
 async def get_youtube_service(user:User) -> Resource:
     credentials = await check_and_refresh_google_credentials(user)
     return build(
@@ -97,7 +99,76 @@ async def get_youtube_video_stats(user:User,video_id:str)->GoogleVideoStatsRespo
         )
         
     
+async def get_top_youtube_videos_by_views_and_date(user: User, start_date: datetime, end_date: datetime,type_sta:str, max_results: int = 10) -> List[dict[str, Any]]:
+    try:
+        youtube_service = await get_youtube_service(user)
 
+        # Lấy uploads playlist ID
+        channels_response = youtube_service.channels().list(
+            part="contentDetails",
+            mine=True
+        ).execute()
+
+        if not channels_response['items']:
+            raise HTTPException(status_code=404, detail="YouTube channel not found")
+
+        uploads_playlist_id = channels_response['items'][0]['contentDetails']['relatedPlaylists']['uploads']
+
+        video_infos = []
+        next_page_token = None
+
+        # Duyệt hết các video trong uploads playlist
+        while True:
+            playlist_response = youtube_service.playlistItems().list(
+                part="snippet",
+                playlistId=uploads_playlist_id,
+                maxResults=50,
+                pageToken=next_page_token
+            ).execute()
+
+            for item in playlist_response['items']:
+                published_at_str = item['snippet']['publishedAt']
+                published_at = datetime.fromisoformat(published_at_str.replace("Z", "+00:00"))
+
+                if start_date <= published_at <= end_date:
+                    video_infos.append({
+                        'id': item['snippet']['resourceId']['videoId'],
+                        'publishedAt': published_at
+                    })
+
+            next_page_token = playlist_response.get('nextPageToken')
+            if not next_page_token:
+                break
+
+        if not video_infos:
+            return []
+
+        # Lấy statistics theo batch 50 video/lần
+        all_video_stats = []
+        for i in range(0, len(video_infos), 50):
+            batch_infos = video_infos[i:i+50]
+            batch_ids = [v['id'] for v in batch_infos]
+
+            videos_response = youtube_service.videos().list(
+                part="statistics,snippet",
+                id=",".join(batch_ids)
+            ).execute()
+
+            for video in videos_response['items']:
+                stats = video['statistics']
+                snippet = video['snippet']
+                all_video_stats.append(
+                    {
+                        "platform": "google",
+                        "title": snippet.get('title', ''),
+                        "count": int(stats.get(f'{type_sta}Count', 0)),
+                    }
+                )
+        all_video_stats.sort(key=lambda v: v['count'], reverse=True)
+        return all_video_stats[:max_results]
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get top YouTube videos: {str(e)}")
 
 
 
