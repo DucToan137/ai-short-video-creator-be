@@ -136,12 +136,20 @@ async def process_tiktok_user(user_data: Dict[str, Any], access_token: str,refre
         "token_created_at": datetime.now().timestamp(),
         "open_id": open_id,
     }
-    existing_user = None
+
     if current_user:
-        existing_user = await get_user_by_username(current_user.username)
-    if not existing_user:
-        existing_user = await get_user_by_tiktok_open_id(open_id)
+        social_credentials = current_user.social_credentials or {}
+        social_credentials['tiktok'] = tiktok_platform_data
+        await collection.update_one(
+            {"_id": ObjectId(current_user.id)},
+            {"$set": {"social_credentials": social_credentials}}
+        )
+        current_user.social_credentials = social_credentials
+        return current_user
+
+    existing_user = await collection.find_one({"social_credentials.tiktok.open_id": open_id, "type": "tiktok"})
     if existing_user:
+        existing_user = User(**existing_user)
         social_credentials = existing_user.social_credentials or {}
         social_credentials['tiktok'] = tiktok_platform_data
         await collection.update_one(
@@ -153,11 +161,12 @@ async def process_tiktok_user(user_data: Dict[str, Any], access_token: str,refre
     else:
         unique_username = await generate_username(display_name or f"tiktok_user_{open_id[:4]}")
         password = generate_password()
-        new_user ={
+        new_user={
             "username": unique_username,
             "fullName": display_name or f"TikTok User {open_id[:4]}",
             "avatar": avatar_url,
             "password": hash_password(password),
+            "type": "tiktok",
             "social_credentials": {
                 "tiktok": tiktok_platform_data
             }

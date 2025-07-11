@@ -8,7 +8,7 @@ class UserBase(BaseModel):
     username:str = Field(...,min_length=3, max_length=50)
     email:EmailStr | None = None
     fullName:str | None = None
-    type: Literal["regular", "google", "facebook"] = Field(default="regular")
+    type: Literal["regular", "google", "facebook", "tiktok"] = Field(default="regular")
     
     @field_validator('username')
     def username_alphanumeric(cls, v):
@@ -41,7 +41,7 @@ class UserResponse(UserBase):
     email: str|None = None
     fullName: str|None = None
     avatar: str|None = None
-    type: Literal["regular", "google", "facebook"] = Field(default="regular")
+    type: Literal["regular", "google", "facebook", "tiktok"] = Field(default="regular")
     created_at: datetime
     social_credentials: Optional[dict] = Field(default_factory=dict)
     # facebook: Optional[dict] = Field(default_factory=dict)

@@ -13,7 +13,7 @@ class User(BaseModel):
     email: EmailStr| None = None
     fullName:str|None = None
     avatar:str | None = None
-    type: Literal["regular", "google", "facebook"] = Field(default="regular")  # User account type
+    type: Literal["regular", "google", "facebook", "tiktok"] = Field(default="regular")  # User account type
     created_at: datetime = Field(default_factory=datetime.now)
     social_credentials:Optional[Dict[str, Any]] = None
     model_config =ConfigDict(
