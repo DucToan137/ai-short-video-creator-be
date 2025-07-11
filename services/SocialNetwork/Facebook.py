@@ -9,6 +9,7 @@ import requests
 from typing import Any,List
 from bson import ObjectId
 from datetime import datetime
+from dateutil.parser import parse
 collection = user_collection()
 async def upload_video_to_facebook(user: User,page_id:str, upload_request: VideoUpLoadRequest) -> str:
     try:
@@ -305,7 +306,7 @@ async def get_top_facebook_videos_by_stat(user: User, start_date: datetime, end_
                 raise HTTPException(status_code=400, detail=f"Error: {response['error']['message']}")
 
             for item in response.get('data', []):
-                created_at = datetime.fromisoformat(item['created_time'].replace("Z", "+00:00"))
+                created_at = parse(item['created_time'])
                 if start_date <= created_at <= end_date:
                     video_id = item.get("id")
                     title = item.get("title", "")
