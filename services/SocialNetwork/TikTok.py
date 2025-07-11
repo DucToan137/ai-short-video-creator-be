@@ -5,8 +5,8 @@ from services import check_and_refresh_tiktok_credentials,download_video_media_f
 import math
 import httpx
 import asyncio
-from typing import Dict,Any
-
+from typing import Dict,Any,List
+from datetime import datetime,timezone
 async def upload_video_to_tiktok(user:User,upload_request:VideoUpLoadRequest)->str:
     try:
         access_token = await check_and_refresh_tiktok_credentials(user)
@@ -153,7 +153,7 @@ async def check_status_video_upload(publish_id: str, access_token: str) -> bool:
 async def get_list_of_tiktok_videos(user: User) -> Dict[str, Any]:
     try:
         access_token = await check_and_refresh_tiktok_credentials(user)
-        url = "https://open.tiktokapis.com/v2/video/list/?fields=id,title,cover_image_url,share_url"
+        url = "https://open.tiktokapis.com/v2/video/list/?fields=id"
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json; charset=UTF-8"
@@ -238,3 +238,80 @@ async def get_tiktok_video_stats(user: User, video_id: str) -> TikTokVideoStatsR
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch TikTok video stats: {e.detail}"
         )
+    
+
+async def get_top_tiktok_videos_by_stats_and_date(user, start_date, end_date, type_sta, max_results=10) -> List[Dict[str, Any]]:
+    try:
+        print("degggg")
+        type_sta = type_sta +"_count"
+        access_token = await check_and_refresh_tiktok_credentials(user)
+        url = "https://open.tiktokapis.com/v2/video/query/?fields=id,title,create_time,share_url,view_count,like_count,comment_count"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json; charset=UTF-8"
+        }
+
+        # Lấy danh sách video IDs từ list API
+        all_videos = await get_list_of_tiktok_videos(user)
+        video_ids = [v["id"] for v in all_videos.get("videos", [])]
+        if not video_ids:
+            return []
+
+        data = {
+            "filters": {
+                "video_ids": video_ids
+            }
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json=data, headers=headers)
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to fetch TikTok video stats: {response.text}"
+            )
+
+        result = response.json()
+        if result.get("error", {}).get("code") != "ok":
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error fetching TikTok video stats: {result.get('error', {}).get('message', 'Unknown error')}"
+            )
+
+        videos = result["data"].get("videos", [])
+        if not videos:
+            return []
+        print("Videos:", videos)
+        # Lọc theo khoảng ngày (sửa lỗi timezone)
+        filtered_videos = [
+            v for v in videos
+            if start_date <= datetime.utcfromtimestamp(v["create_time"]).replace(tzinfo=timezone.utc) <= end_date
+        ]
+        print("Deggggg",filtered_videos)
+        # Sắp xếp giảm dần theo type_sta
+        sorted_videos = sorted(
+            filtered_videos,
+            key=lambda v: int(v.get(type_sta, 0)),
+            reverse=True
+        )
+
+        # Lấy top max_results
+        top_videos = [
+            {
+                "title": v.get("title", ""),
+                "count": int(v.get(type_sta, 0)),
+            }
+            for v in sorted_videos[:max_results]
+        ]
+
+        return top_videos
+
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch TikTok video stats: {str(e)}"
+        )
+    
+

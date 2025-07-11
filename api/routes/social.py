@@ -2,10 +2,11 @@ from fastapi import APIRouter,Depends,HTTPException,status,Form,Query
 from schemas import VideoUpLoadRequest,VideoStatsResponse,GoogleVideoStatsResponse,FacebookVideoStatsResponse
 from models import User
 from api.deps import get_current_user
-from services.SocialNetwork import upload_video,get_video_stats,get_more_info_social_networks,get_social_videos
+from services.SocialNetwork import upload_video,get_video_stats,get_more_info_social_networks,get_social_videos,get_top_video
 from services.Media.media_utils import check_media_of_user
 from typing import Union,Optional
 from schemas import SocialPlatform
+from datetime import datetime
 router = APIRouter(prefix="/social", tags=["Social Media"])
 @router.post("/upload-video",response_model=str)
 async def upload_video_to_social(upload_request: VideoUpLoadRequest=Form(...), user: User = Depends(get_current_user)):
@@ -52,6 +53,16 @@ async def get_social_network_videos(user: User = Depends(get_current_user),video
 async def get_more_information_social_networks(user: User = Depends(get_current_user), platform: SocialPlatform = Form(...)):
     try:
         return await get_more_info_social_networks(user, platform)
+    except HTTPException as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=e.detail
+        )
+    
+@router.post("/top-video",response_model=Optional[list[dict]])
+async def get_top_videod(user: User = Depends(get_current_user),start_date:datetime =Form(...),end_date:datetime=Form(...),type_sta:str= Form(...), platform: SocialPlatform = Form(...)):
+    try:
+        return await get_top_video(user,start_date,end_date, type_sta, platform)
     except HTTPException as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

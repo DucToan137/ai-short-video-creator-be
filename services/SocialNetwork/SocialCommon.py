@@ -2,9 +2,10 @@ from fastapi import HTTPException, status
 from models import User
 from schemas import VideoUpLoadRequest,SocialPlatform
 from services.SocialNetwork import upload_video_to_youtube,get_youtube_video_stats
-from .Youtube import upload_video_to_youtube, get_youtube_video_stats
-from .Facebook import upload_video_to_facebook, get_facebook_video_stats,get_pages_of_user
-from .TikTok import upload_video_to_tiktok,get_list_of_tiktok_videos,get_tiktok_video_stats
+from .Youtube import upload_video_to_youtube, get_youtube_video_stats,get_top_youtube_videos_by_views_and_date
+from .Facebook import upload_video_to_facebook, get_facebook_video_stats,get_pages_of_user,get_top_facebook_videos_by_stat
+from .TikTok import upload_video_to_tiktok,get_list_of_tiktok_videos,get_tiktok_video_stats,get_top_tiktok_videos_by_stats_and_date
+from datetime import datetime
 async def upload_video(user:User,upload_request:VideoUpLoadRequest):
     if upload_request.platform == SocialPlatform.GOOGLE:
         if not user.social_credentials or 'google' not in user.social_credentials:
@@ -64,6 +65,34 @@ async def get_more_info_social_networks(user:User,platform:SocialPlatform):
                 detail="Facebook credentials are not available for the user."
             )
         return await get_pages_of_user(user)
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Platform {platform} is not supported for fetching more info."
+        )
+    
+async def get_top_video(user:User,start_date:datetime,end_date:datetime,type_sta:str,platform:SocialPlatform):
+    if platform ==SocialPlatform.GOOGLE:
+        if not user.social_credentials or 'google' not in user.social_credentials:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Google credentials are not available for the user."
+            )
+        return await get_top_youtube_videos_by_views_and_date(user,start_date,end_date,type_sta, max_results=10)
+    elif platform == SocialPlatform.FACEBOOK:
+        if not user.social_credentials or 'facebook' not in user.social_credentials:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Facebook credentials are not available for the user."
+            )
+        return await get_top_facebook_videos_by_stat(user,start_date,end_date,type_sta, max_results=10)
+    elif platform == SocialPlatform.TIKTOK:
+        if not user.social_credentials or 'tiktok' not in user.social_credentials:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=" credentials are not available for the user."
+            )
+        return await get_top_tiktok_videos_by_stats_and_date(user,start_date,end_date,type_sta, max_results=10)
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

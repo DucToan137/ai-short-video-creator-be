@@ -6,8 +6,9 @@ from fastapi import HTTPException, status
 from config import user_collection
 from schemas import SocialPlatform
 import requests
-from typing import Any
+from typing import Any,List
 from bson import ObjectId
+from datetime import datetime
 collection = user_collection()
 async def upload_video_to_facebook(user: User,page_id:str, upload_request: VideoUpLoadRequest) -> str:
     try:
@@ -259,4 +260,87 @@ async def get_pages_of_user(user:User)-> dict[str,Any]:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch pages: {e.detail}"
         )
-   
+    
+
+from typing import List, Any
+from datetime import datetime
+from fastapi import HTTPException
+import requests
+
+async def get_top_facebook_videos_by_stat(user: User, start_date: datetime, end_date: datetime, type_sta: str, max_results: int = 10) -> List[dict[str, Any]]:
+    try:
+        type_sta = type_sta+"s"
+        if type_sta =="likes":
+            type_sta = "reactions"
+        access_token = await check_facebook_credentials(user)
+        facebook_pages = user.social_credentials.get('facebook', {}).get('pages', [])
+        if not facebook_pages:
+            raise HTTPException(status_code=404, detail="No Facebook pages found for user")
+
+        page_id = facebook_pages[0].get('id')
+        page = await get_page_by_pageid(user, page_id)
+        if not page:
+            raise HTTPException(status_code=404, detail="Page not found")
+
+        page_access_token = page.get('access_token')
+        if not page_access_token:
+            raise HTTPException(status_code=400, detail="Page access token not found")
+
+        videos = []
+        next_page = None
+
+        while True:
+            url = f"https://graph.facebook.com/v23.0/{page_id}/videos"
+            params = {
+                "access_token": page_access_token,
+                "limit": 50,
+                "fields": "id,created_time,title,description,permalink_url,views"
+            }
+            if next_page:
+                params["after"] = next_page
+
+            response = requests.get(url, params=params).json()
+
+            if "error" in response:
+                raise HTTPException(status_code=400, detail=f"Error: {response['error']['message']}")
+
+            for item in response.get('data', []):
+                created_at = datetime.fromisoformat(item['created_time'].replace("Z", "+00:00"))
+                if start_date <= created_at <= end_date:
+                    video_id = item.get("id")
+                    title = item.get("title", "")
+                    count = 0
+
+                    # Lấy số liệu tương ứng
+                    if type_sta == "views":
+                        count = int(item.get("views", 0))
+                    elif type_sta == "comments":
+                        count = await get_video_comments(video_id, page_access_token)
+                    elif type_sta == "reactions":
+                        reactions = await get_video_creations(f"{page_id}_{video_id}", page_access_token)
+                        count = sum(reactions.values())
+                    else:
+                        raise HTTPException(status_code=400, detail="Invalid statistic type")
+
+                    videos.append({
+                        'id': video_id,
+                        'title': title,
+                        'count': count
+                    })
+
+            paging = response.get('paging', {})
+            next_page = paging.get('cursors', {}).get('after')
+            if not next_page:
+                break
+
+        if not videos:
+            return []
+
+        # Sắp xếp giảm dần theo count
+        videos.sort(key=lambda v: v['count'], reverse=True)
+        return videos[:max_results]
+
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch Facebook videos: {str(e)}")
