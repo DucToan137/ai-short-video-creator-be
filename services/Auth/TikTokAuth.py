@@ -139,6 +139,8 @@ async def process_tiktok_user(user_data: Dict[str, Any], access_token: str,refre
     existing_user = None
     if current_user:
         existing_user = await get_user_by_username(current_user.username)
+    if not existing_user:
+        existing_user = await get_user_by_tiktok_open_id(open_id)
     if existing_user:
         social_credentials = existing_user.social_credentials or {}
         social_credentials['tiktok'] = tiktok_platform_data
