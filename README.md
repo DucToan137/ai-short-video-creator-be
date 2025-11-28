@@ -129,8 +129,8 @@ Software-Design-BE/
 1. **Clone the repository**
 
 ```bash
-git clone https://github.com/m-xuanquy/Software-Design-BE.git
-cd Software-Design-BE
+git clone https://github.com/DucToan137/ai-short-video-creator-be.git
+cd ai-short-video-creator-be
 ```
 
 2. **Install dependencies**
